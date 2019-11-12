@@ -18,6 +18,10 @@ import glob
 # ======================================================================
 # Model name
 MODEL='NASA-GISS'
+START_DATE=2013010106 ## TIME FORMAT: YYYYMMDDHH
+END_DATE=2014123118 
+PARENT_DATE=1850010100
+TIME_STEP='days'
 # MODEL=os.environ["CASENAME"]#os.environ["model"] # will show up in the figure
 # Model output directory
 MODEL_OUTPUT_DIR='/scratch/neelin/CMIP6/wget_scripts/NASA-GISS/' # where original model data are located
@@ -53,7 +57,7 @@ REGION_MASK_FILENAME="region_0.25x0.25_costal2.5degExcluded.mat"
 NUMBER_OF_REGIONS=4 # default: 4
 # Region names
 REGION_STR=["WPac","EPac","Atl","Ind"]
-
+time_idx_delta=1000
 # ======================================================================
 # Directory for saving pre-processed temperature fields
 #  tave [K]: Mass-weighted column average temperature
@@ -95,21 +99,6 @@ BIN_ANYWAY=True
 # ======================================================================
 # Column Water Vapor (CWV in mm) range & bin-width
 #  CWV bin centers are integral multiples of cwv_bin_width
-
-# buoy_bins=np.arange(-1.5,1.51,.01)
-# # buoy_bins=cwv_bins ### Use this if trying to bin by CWV
-# buoy_bin_center=(buoy_bins[1:]+buoy_bins[:-1])*0.5
-# buoy_bin_width=np.diff(buoy_bins)
-# 
-# cape_bins=np.arange(-40,17.0,1.0)
-# cape_bin_center=(cape_bins[1:]+cape_bins[:-1])*0.5
-# cape_bin_width=np.diff(cape_bins)
-# 
-# subsat_bins=np.arange(0,42.,1.0)
-# subsat_bin_center=(subsat_bins[1:]+subsat_bins[:-1])*0.5
-# subsat_bin_width=np.diff(subsat_bins)
-# 
-# Bin width and intervals for Bint in units of 0.01 m/s^2
 
 BINT_BIN_WIDTH=0.01 # default=0.3 (following satellite retrieval product)
 BINT_RANGE_MAX=1.51 # default=90 (75 for satellite retrieval product)
@@ -158,6 +147,10 @@ PRECIP_THRESHOLD=0.25
 data={}
 
 data["MODEL"]=MODEL
+data["START_DATE"]=START_DATE
+data["END_DATE"]=END_DATE
+data["PARENT_DATE"]=PARENT_DATE
+data["TIME_STEP"]=TIME_STEP
 data["MODEL_OUTPUT_DIR"]=MODEL_OUTPUT_DIR
 data["PREPROCESSING_OUTPUT_DIR"]=PREPROCESSING_OUTPUT_DIR
 
@@ -176,10 +169,10 @@ data["LFT_THETAE_VAR"]=LFT_THETAE_VAR
 data["LFT_THETAE_SAT_VAR"]=LFT_THETAE_SAT_VAR
 data["BL_THETAE"]=BL_THETAE_VAR
 
-data["PR_VAR"]=PR_VAR
-data["PRC_VAR"]=PRC_VAR
-data["TA_VAR"]=TA_VAR
-data["HUS_VAR"]=HUS_VAR
+# data["PR_VAR"]=PR_VAR
+# data["PRC_VAR"]=PRC_VAR
+# data["TA_VAR"]=TA_VAR
+# data["HUS_VAR"]=HUS_VAR
 
 data["PS_VAR"]=PS_VAR
 data["A_VAR"]=A_VAR
@@ -188,7 +181,7 @@ data["B_VAR"]=B_VAR
 # data["TAVE_VAR"]=TAVE_VAR
 # data["QSAT_INT_VAR"]=QSAT_INT_VAR
 # data["PRES_VAR"]=PRES_VAR
-# data["time_idx_delta"]=time_idx_delta
+data["time_idx_delta"]=time_idx_delta
 # data["BULK_TROPOSPHERIC_TEMPERATURE_MEASURE"]=BULK_TROPOSPHERIC_TEMPERATURE_MEASURE
 
 data["BIN_OUTPUT_DIR"]=BIN_OUTPUT_DIR
@@ -238,15 +231,19 @@ data["bin_output_list"]=sorted(glob.glob(data["BIN_OUTPUT_DIR"]+"/"+data["BIN_OU
 # Assumes that the corresponding files in each list
 #  have the same spatial/temporal coverage/resolution
 
-pr_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+PR_VAR))
-prc_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+PRC_VAR))
-lft_thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+LFT_THETAE_VAR))
-lft_thetae_sat_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+LFT_THETAE_SAT_VAR))
-bl_thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+BL_THETAE_VAR))
+pr_list=sorted(glob.glob(MODEL_OUTPUT_DIR+PR_VAR+"/*"))
+prc_list=sorted(glob.glob(MODEL_OUTPUT_DIR+PRC_VAR+"/*"))
+ta_list=sorted(glob.glob(MODEL_OUTPUT_DIR+TA_VAR+"/*"))
+hus_list=sorted(glob.glob(MODEL_OUTPUT_DIR+HUS_VAR+"/*"))
 
-# data["LFT_THETAE_VAR"]=LFT_THETAE_VAR
-# data["LFT_THETAE_SAT_VAR"]=LFT_THETAE_SAT_VAR
-# data["BL_THETAE"]=BL_THETAE
+data["pr_list"] = pr_list
+data["prc_list"] = prc_list
+data["ta_list"] = ta_list
+data["hus_list"] = hus_list
+
+data["LFT_THETAE_VAR"]=LFT_THETAE_VAR
+data["LFT_THETAE_SAT_VAR"]=LFT_THETAE_SAT_VAR
+data["BL_THETAE"]=BL_THETAE_VAR
 # prw_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+os.environ["prw_file"]))
 # ta_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+os.environ["ta_file"]))
 # data["pr_list"] = pr_list
@@ -254,14 +251,21 @@ bl_thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+BL_THETAE_VAR))
 # data["ta_list"] = ta_list
 
 # Check for pre-processed tave & qsat_int data
+
+lft_thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+LFT_THETAE_VAR))
+lft_thetae_sat_list=sorted(glob.glob(MODEL_OUTPUT_DIR+LFT_THETAE_SAT_VAR))
+bl_thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+BL_THETAE_VAR))
+
 data["lft_thetae_list"]=lft_thetae_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+lft_thetae_list))
 data["lft_thetae_sat_list"]=lft_thetae_sat_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+lft_thetae_sat_list))
 data["bl_thetae_list"]=bl_thetae_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+bl_thetae_list))
 
 if 0 in (len(data["lft_thetae_list"]), len(data["lft_thetae_sat_list"]), len(data["bl_thetae_list"])):
     data["PREPROCESS_THETAE"]=1
+    data["SAVE_THETAE"]=1
 else:
     data["PREPROCESS_THETAE"]=0
+    data["SAVE_THETAE"]=0
 
 # Taking care of function arguments for binning
 data["args1"]=[ \
@@ -275,6 +279,10 @@ SUBSAT_RANGE_MIN, \
 SUBSAT_RANGE_MAX, \
 SUBSAT_BIN_WIDTH, \
 NUMBER_OF_REGIONS, \
+START_DATE,\
+END_DATE,\
+PARENT_DATE,\
+TIME_STEP,\
 pr_list, \
 PR_VAR, \
 prc_list, \
@@ -287,12 +295,19 @@ data["lft_thetae_sat_list"], \
 LFT_THETAE_SAT_VAR, \
 data["bl_thetae_list"], \
 BL_THETAE_VAR, \
+ta_list, \
+TA_VAR, \
+hus_list, \
+HUS_VAR, \
 LEV_VAR, \
+PS_VAR, \
+A_VAR,\
+B_VAR,\
 MODEL, \
-# p_lev_mid, \
+p_lev_mid, \
 # dp, \
-# time_idx_delta, \
-# data["SAVE_TAVE_QSAT_INT"], \
+time_idx_delta, \
+data["SAVE_THETAE"], \
 PREPROCESSING_OUTPUT_DIR, \
 PRECIP_THRESHOLD, \
 data["BIN_OUTPUT_DIR"], \
@@ -301,10 +316,10 @@ TIME_VAR, \
 LAT_VAR, \
 LON_VAR ]
 
-# data["args2"]=[ \
-# data["bin_output_list"],\
-# TAVE_VAR,\
-# QSAT_INT_VAR,\
-# BULK_TROPOSPHERIC_TEMPERATURE_MEASURE ]
+data["args2"]=[ \
+data["bin_output_list"],\
+LFT_THETAE_VAR,\
+LFT_THETAE_SAT_VAR,\
+BL_THETAE_VAR]
 with open(os.getcwd()+'/'+'convecTransLev2_calc_parameters.json', "w") as outfile:
     json.dump(data, outfile)

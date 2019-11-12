@@ -30,6 +30,8 @@ from netCDF4 import Dataset
 # import matplotlib.pyplot as mp
 # import matplotlib.cm as cm
 import networkx
+import datetime as dt
+
 
 # ======================================================================
 # convecTransBasic_binTave
@@ -138,12 +140,136 @@ def generate_region_mask(region_mask_filename, model_netcdf_filename, lat_var, l
     #mp.axes().set_aspect('equal')
 
 # ======================================================================
+# convecTransLev2_calcthetae_ML
+#  takes in 3D tropospheric temperature and specific humidity fields on model levels, 
+# and calculates: thetae_LFT, thetae_sat_LFT & thetae_BL.
+# Calculations will be broken up into chunks of time-period corresponding
+#  to time_idx_delta with a default of 1000 time steps
+
+
+def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filename, HUS_VAR,\
+                        LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL, p_lev_mid, time_idx_delta,\
+                        START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
+                        SAVE_THETAE,PREPROCESSING_OUTPUT_DIR,\
+                        THETAE_LT_VAR,THETAE_SAT_LT_VAR,THETAE_BL_VAR,\
+                        TIME_VAR,LAT_VAR,LON_VAR):
+
+
+    strt_dt=dt.datetime.strptime(str(START_DATE),"%Y%m%d%H")
+    end_dt=dt.datetime.strptime(str(END_DATE),"%Y%m%d%H")
+    pt_date=dt.datetime.strptime(str(PARENT_DATE),"%Y%m%d%H")
+
+    ### LOAD T & q ###
+
+    ta_netcdf=Dataset(ta_netcdf_filename,"r")
+    time=numpy.asarray(ta_netcdf.variables[TIME_VAR][:],dtype="float")
+    lev=numpy.asarray(ta_netcdf.variables[LEV_VAR][:],dtype="float")
+    ps=numpy.asarray(ta_netcdf.variables[PS_VAR][:],dtype="float")
+    a=numpy.asarray(ta_netcdf.variables[A_VAR][:],dtype="float")
+    b=numpy.asarray(ta_netcdf.variables[B_VAR][:],dtype="float")
+    lat=numpy.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
+    lon=numpy.asarray(ta_netcdf.variables[LON_VAR][:],dtype="float")
+    ta_netcdf.close()
+
+    dates_ta=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]
+    pres=b[:,None,None,None]*ps[None,...]+a[:,None,None,None]
+    print(pres[:,100,50,50],ps[100,50,50])
+    print(lat[50],lon[50])
+    exit()
+    
+    hus_netcdf=Dataset(hus_netcdf_filename,"r")
+    time=numpy.asarray(hus_netcdf.variables[TIME_VAR][:],dtype="float")
+    hus_netcdf.close()
+    dates_hus=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]
+    
+    if(len(dates_ta)!=len(dates_hus)):
+        raise Exception('Length of T file is different from q file')
+        
+
+    
+    
+
+# ======================================================================
+# convecTransBasic_calc_model
+#  takes in ALL 2D pre-processed fields (precip, CWV, and EITHER tave or qsat_int),
+#  calculates the binned data, and save it as a netCDF file
+#  in the var_data/convective_transition_diag directory
+
+def convecTransLev2_calc_model(*argsv):
+    # ALLOCATE VARIABLES FOR EACH ARGUMENT
+            
+    BINT_BIN_WIDTH,\
+    BINT_RANGE_MAX,\
+    BINT_RANGE_MIN,\
+    CAPE_RANGE_MIN,\
+    CAPE_RANGE_MAX,\
+    CAPE_BIN_WIDTH,\
+    SUBSAT_RANGE_MIN,\
+    SUBSAT_RANGE_MAX,\
+    SUBSAT_BIN_WIDTH,\
+    NUMBER_OF_REGIONS,\
+    START_DATE,\
+    END_DATE,\
+    PARENT_DATE,\
+    TIME_STEP,\
+    pr_list,\
+    PR_VAR,\
+    prc_list,\
+    PRC_VAR,\
+    PREPROCESS_THETAE,\
+    MODEL_OUTPUT_DIR,\
+    lft_thetae_list,\
+    LFT_THETAE_VAR,\
+    lft_thetae_sat_list,\
+    LFT_THETAE_SAT_VAR,\
+    bl_thetae_list,\
+    BL_THETAE_VAR,\
+    ta_list,\
+    TA_VAR,\
+    hus_list,\
+    HUS_VAR,\
+    LEV_VAR,\
+    PS_VAR,\
+    A_VAR,\
+    B_VAR,\
+    MODEL,\
+    p_lev_mid,\
+    time_idx_delta,\
+    SAVE_THETAE,\
+    PREPROCESSING_OUTPUT_DIR,\
+    PRECIP_THRESHOLD,\
+    BIN_OUTPUT_DIR,\
+    BIN_OUTPUT_FILENAME,\
+    TIME_VAR,\
+    LAT_VAR,\
+    LON_VAR=argsv[0]
+    
+
+    # Pre-process temperature field if necessary
+    if PREPROCESS_THETAE==1:
+        print("   Start pre-processing atmospheric temperature & moisture fields...")
+        for li in numpy.arange(len(pr_list)):
+            convecTransLev2_calcthetae_ML(ta_list[li], TA_VAR, hus_list[li], HUS_VAR,\
+                                LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL, p_lev_mid, time_idx_delta,\
+                                START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
+                                SAVE_THETAE,PREPROCESSING_OUTPUT_DIR,\
+                                LFT_THETAE_VAR,LFT_THETAE_SAT_VAR,BL_THETAE_VAR,\
+                                TIME_VAR,LAT_VAR,LON_VAR)
+        # Re-load file lists for tave & qsat_int
+#         tave_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+"/"+os.environ["tave_file"]))
+#         qsat_int_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+"/"+os.environ["qsat_int_file"]))
+    
+    
+
+# ======================================================================
 # convecTransBasic_calcTaveQsatInt
 #  takes in 3D tropospheric temperature fields and calculates tave & qsat_int
 # Calculations will be broken up into chunks of time-period corresponding
 #  to time_idx_delta with a default of 1000 time steps
 # Definition of column can be changed through p_lev_bottom & p_lev_top,
 #  but the default filenames for tave & qsat_int do not contain column info
+
+
 
 def convecTransBasic_calcTaveQsatInt(ta_netcdf_filename,TA_VAR,PRES_VAR,MODEL,\
                         p_lev_bottom,p_lev_top,dp,time_idx_delta,\

@@ -29,10 +29,11 @@ import os
 # Import Python functions specific to Convective Transition Basic Statistics
 from convecTransBasic_util import generate_region_mask
 from convecTransBasic_util import convecTransBasic_calc_model
+from convecTransBasic_util import convecTransLev2_calc_model
 # from convecTransBasic_util import convecTransBasic_loadAnalyzedData
 # from convecTransBasic_util import convecTransBasic_plot
 print("**************************************************")
-print("Excuting Convective Transition Basic Statistics (convecTransBasic.py)......")
+print("Executing Convective Transition Basic Statistics (convecTransBasic.py)......")
 print("**************************************************")
 
 print("Load user-specified binning parameters..."),
@@ -44,9 +45,6 @@ with open(os.getcwd()+"/"+"convecTransLev2_calc_parameters.json") as outfile:
     bin_data=json.load(outfile)
 print("...Loaded!")
 
-exit()
-
-### Keeping fixed for now ####
 
 # ======================================================================
 # Binned data, i.e., convective transition statistics binned in specified intervals of 
@@ -67,17 +65,18 @@ if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
 #             +") will be saved to "+bin_data["PREPROCESSING_OUTPUT_DIR"]+"/")
 
     # Load & pre-process region mask
-    REGION=generate_region_mask(bin_data["REGION_MASK_DIR"]+"/"+bin_data["REGION_MASK_FILENAME"], bin_data["pr_list"][0],bin_data["LAT_VAR"],bin_data["LON_VAR"])
+#     REGION=generate_region_mask(bin_data["REGION_MASK_DIR"]+"/"+bin_data["REGION_MASK_FILENAME"], bin_data["pr_list"][0],bin_data["LAT_VAR"],bin_data["LON_VAR"])
 
     # Pre-process temperature (if necessary) & bin & save binned results
 #     binned_output=convecTransBasic_calc_model(REGION,bin_data["args1"])
+        binned_output=convecTransLev2_calc_model(bin_data["args1"])
 
 else: # Binned data file exists & BIN_ANYWAY=False
     print("Binned output detected..."),
 #     binned_output=convecTransBasic_loadAnalyzedData(bin_data["args2"])
 #     print("...Loaded!")
 
-
+exit()
 
 ####### MASK ########
 
