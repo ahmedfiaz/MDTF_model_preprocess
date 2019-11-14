@@ -33,7 +33,7 @@ from convecTransBasic_util import convecTransLev2_calc_model
 # from convecTransBasic_util import convecTransBasic_loadAnalyzedData
 # from convecTransBasic_util import convecTransBasic_plot
 print("**************************************************")
-print("Executing Convective Transition Basic Statistics (convecTransBasic.py)......")
+print("Executing Convective Transition Level 2 Statistics (convecTransLev2.py)......")
 print("**************************************************")
 
 print("Load user-specified binning parameters..."),

@@ -27,10 +27,13 @@ from numba import jit,autojit
 import scipy.io
 from scipy.interpolate import NearestNDInterpolator
 from netCDF4 import Dataset
+from vert_cython import find_closest_index_2D, compute_layer_thetae
 # import matplotlib.pyplot as mp
 # import matplotlib.cm as cm
 import networkx
 import datetime as dt
+from sys import exit, stdout
+
 
 
 # ======================================================================
@@ -76,6 +79,27 @@ def convecTransBasic_binQsatInt(lon_idx, NUMBER_OF_REGIONS, NUMBER_TEMP_BIN, NUM
                     p2[reg-1,cwv_idx[time_idx],temp_idx[time_idx]]+=rain[time_idx]**2
                     if (rain[time_idx]>PRECIP_THRESHOLD):
                         pe[reg-1,cwv_idx[time_idx],temp_idx[time_idx]]+=1
+
+
+### Compute the saturation vapor pressure for a given temperature ###
+
+def es_calc(temp):
+
+    #This function gives sat. vap. pressure (in Pa) for a temp value (in K)
+    
+	#get some constants:
+	tmelt  = 273.15
+
+	#convert inputs to proper units, forms
+	tempc = temp - tmelt # in C
+	tempcorig = tempc
+	c=numpy.array((0.6105851e+03,0.4440316e+02,0.1430341e+01,0.2641412e-01,0.2995057e-03,0.2031998e-05,0.6936113e-08,0.2564861e-11,-.3704404e-13))
+
+	#calc. es in hPa (!!!)
+	#es = 6.112*EXP(17.67*tempc/(243.5+tempc))
+	es=c[0]+tempc*(c[1]+tempc*(c[2]+tempc*(c[3]+tempc*(c[4]+tempc*(c[5]+tempc*(c[6]+tempc*(c[7]+tempc*c[8])))))))
+	return es
+
 
 # ======================================================================
 # generate_region_mask
@@ -169,23 +193,116 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     b=numpy.asarray(ta_netcdf.variables[B_VAR][:],dtype="float")
     lat=numpy.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
     lon=numpy.asarray(ta_netcdf.variables[LON_VAR][:],dtype="float")
+    
+    ta=numpy.asarray(ta_netcdf.variables[TA_VAR][:],dtype="float")
     ta_netcdf.close()
 
     dates_ta=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]
-    pres=b[:,None,None,None]*ps[None,...]+a[:,None,None,None]
-    print(pres[:,100,50,50],ps[100,50,50])
-    print(lat[50],lon[50])
-    exit()
+    dates_ta_max,dates_ta_min=max(dates_ta),min(dates_ta)
+    dates_indx=numpy.asarray([i for (i,idt) in enumerate(dates_ta) if (idt<dates_ta_max and idt>dates_ta_min)])
     
+    ### READ SP.HUMIDITY ### 
+        
     hus_netcdf=Dataset(hus_netcdf_filename,"r")
+    hus=numpy.asarray(hus_netcdf.variables[HUS_VAR][:],dtype="float")
     time=numpy.asarray(hus_netcdf.variables[TIME_VAR][:],dtype="float")
     hus_netcdf.close()
-    dates_hus=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]
-    
+
+    dates_hus=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]    
     if(len(dates_ta)!=len(dates_hus)):
         raise Exception('Length of T file is different from q file')
-        
+    
+    ### CREATE PRESSURE LEVELS ###
+    pres=b[:,None,None,None]*ps[None,...]+a[:,None,None,None]
 
+    ### Define the layers ###    
+    pbl_top=ps-100e2 ## The sub-cloud layer is 100 mb thick ##
+    low_top=numpy.zeros_like(ps)
+    low_top[:]=500e2  # the mid-troposphere is fixed at 500 mb
+
+    pbl_top=numpy.float_(pbl_top.flatten())
+    low_top=numpy.float_(low_top.flatten())
+    lev=pres.reshape(*pres.shape[:1],-1)
+#     lev=numpy.float_(pres)
+
+
+    print('Extracting indices')
+    
+    pbl_ind=numpy.zeros(pbl_top.size,dtype=numpy.int64)
+    low_ind=numpy.zeros(low_top.size,dtype=numpy.int64)
+
+    find_closest_index_2D(pbl_top,lev,pbl_ind)
+    find_closest_index_2D(low_top,lev,low_ind)
+
+    ##### Calculate qsat #####
+
+    Tk0 = 273.15 # Reference temperature.
+    Es0 = 610.7 # Vapor pressure at Tk0.
+    Lv0 = 2500800 # Latent heat of evaporation at Tk0.
+    cpv = 1869.4 # Isobaric specific heat capacity of water vapor at tk0.
+    cl = 4218.0 # Specific heat capacity of liquid water at tk0.
+    R = 8.3144 # Universal gas constant.
+    Mw = 0.018015 # Molecular weight of water.
+    Rv = R/Mw # Gas constant for water vapor.
+    Ma = 0.028964 # Molecular weight of dry air.
+    Rd = R/Ma # Gas constant for dry air.
+    epsilon = Mw/Ma 
+    g = 9.80665 
+    cpd=1004.
+    Po=1025e2
+
+    ### Saturation specific humidity and mixing ratio ###
+    print('ESTIMATING qSAT.')
+    stdout.flush()
+
+    ### Swap pressure axes for following computation ###
+#     pres=numpy.swapaxes(pres,0,1)
+    ta_flat=numpy.swapaxes(ta,0,1)
+    ta_flat=ta_flat.reshape(*ta_flat.shape[:1],-1)
+
+    hus_flat=numpy.swapaxes(hus,0,1)
+    hus_flat=hus_flat.reshape(*hus_flat.shape[:1],-1)
+
+    qs=numpy.zeros_like(hus_flat)
+    
+    print(ta_flat.shape,hus_flat.shape,lev.shape,pbl_ind.shape,low_ind.shape,qs.shape)
+    
+    compute_layer_thetae(ta_flat, hus_flat, lev, pbl_ind, low_ind, qs)
+    
+    print(qs.max(),qs.min())
+
+#     Es=es_calc(ta)
+#     ws=(epsilon)*(Es/pres)    
+#     hus_sat=ws/(1+ws)
+#     
+#     w=hus/(1-hus)
+#     e=w*pres/(epsilon+w) # vapor pressure in Pa
+
+    print('ESTIMATING THETAE')
+    
+    ## RH ###
+    rh=hus/hus_sat
+    pd=pres-e # partial pressure of dry air
+
+
+
+   #Calculate theta_e
+    theta_e=(ta*(Po/pd)**(Rd/cpd))#*((rh)**(-w*Rv/cpd))*numpy.exp(Lv0*w/(cpd*ta))
+
+#    Saturated theta_e
+#     theta_e_sat=(ta*(Po/pd)**(Rd/cpd))#*numpy.exp(Lv0*ws/(cpd*ta))
+
+    print(theta_e.max(),theta_e.min())
+#     print(theta_e.min(),theta_e_sat.min())
+    
+    exit()
+
+#     pres_3d=numpy.zeros_like(t)
+#     pres_3d[:]=pres[:,None,:,:]
+# 
+#     levels=numpy.zeros_like(t)        
+#     levels[:]=lev[None,:,None,None]
+    
     
     
 
