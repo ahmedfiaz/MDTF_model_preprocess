@@ -17,14 +17,14 @@ import glob
 # START USER SPECIFIED SECTION
 # ======================================================================
 # Model name
-MODEL='NASA-GISS'
+MODEL_NAME='NASA-GISS'
 START_DATE=2013010106 ## TIME FORMAT: YYYYMMDDHH
 END_DATE=2014123118 
 PARENT_DATE=1850010100
 TIME_STEP='days'
 # MODEL=os.environ["CASENAME"]#os.environ["model"] # will show up in the figure
 # Model output directory
-MODEL_OUTPUT_DIR='/scratch/neelin/CMIP6/wget_scripts/NASA-GISS/' # where original model data are located
+MODEL_OUTPUT_DIR='/scratch/neelin/CMIP6/'+MODEL_NAME+'/' # where original model data are located
 # MODEL_OUTPUT_DIR=os.environ["MODEL_OUTPUT_DIR"] # where original model data are located
 # Variable Names
 PR_VAR="pr"
@@ -67,7 +67,10 @@ time_idx_delta=1000
 #  & data["qsat_int_list"] below by replacing MODEL_OUTPUT_DIR with
 #  PREPROCESSING_OUTPUT_DIR
 
-PREPROCESSING_OUTPUT_DIR="/scratch/neelin/layer_thetae/CMIP6/NASA-GISS/" 
+PREPROCESSING_OUTPUT_DIR="/scratch/neelin/layer_thetae/CMIP6/"+MODEL_NAME+"/" 
+
+THETAE_OUT="layer_thetae_var"
+
 LFT_THETAE_VAR="thetae_lt"
 LFT_THETAE_SAT_VAR="thetae_sat_lt"
 BL_THETAE_VAR="thetae_bl"
@@ -87,7 +90,7 @@ BL_THETAE_VAR="thetae_bl"
 # Directory & Filename for saving binned results (netCDF4)
 #  tave or qsat_int will be appended to BIN_OUTPUT_FILENAME
 BIN_OUTPUT_DIR="/home/fiaz/MDTF/"
-BIN_OUTPUT_FILENAME=MODEL+".convecTransLev2"
+BIN_OUTPUT_FILENAME=MODEL_NAME+".convecTransLev2"
 
 # BIN_OUTPUT_DIR=os.environ["WK_DIR"]+"/model/netCDF"
 # BIN_OUTPUT_FILENAME=os.environ["CASENAME"]+".convecTransBasic"
@@ -146,7 +149,7 @@ PRECIP_THRESHOLD=0.25
 # ======================================================================
 data={}
 
-data["MODEL"]=MODEL
+data["MODEL"]=MODEL_NAME
 data["START_DATE"]=START_DATE
 data["END_DATE"]=END_DATE
 data["PARENT_DATE"]=PARENT_DATE
@@ -240,7 +243,7 @@ data["pr_list"] = pr_list
 data["prc_list"] = prc_list
 data["ta_list"] = ta_list
 data["hus_list"] = hus_list
-
+data["THETAE_OUT"] =THETAE_OUT
 data["LFT_THETAE_VAR"]=LFT_THETAE_VAR
 data["LFT_THETAE_SAT_VAR"]=LFT_THETAE_SAT_VAR
 data["BL_THETAE"]=BL_THETAE_VAR
@@ -252,15 +255,16 @@ data["BL_THETAE"]=BL_THETAE_VAR
 
 # Check for pre-processed tave & qsat_int data
 
-lft_thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+LFT_THETAE_VAR))
-lft_thetae_sat_list=sorted(glob.glob(MODEL_OUTPUT_DIR+LFT_THETAE_SAT_VAR))
-bl_thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+BL_THETAE_VAR))
+thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+THETAE_OUT))
+# lft_thetae_sat_list=sorted(glob.glob(MODEL_OUTPUT_DIR+LFT_THETAE_SAT_VAR))
+# bl_thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+BL_THETAE_VAR))
 
-data["lft_thetae_list"]=lft_thetae_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+lft_thetae_list))
-data["lft_thetae_sat_list"]=lft_thetae_sat_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+lft_thetae_sat_list))
-data["bl_thetae_list"]=bl_thetae_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+bl_thetae_list))
+data["thetae_list"]=thetae_list
+# data["lft_thetae_list"]=lft_thetae_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+lft_thetae_list))
+# data["lft_thetae_sat_list"]=lft_thetae_sat_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+lft_thetae_sat_list))
+# data["bl_thetae_list"]=bl_thetae_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+bl_thetae_list))
 
-if 0 in (len(data["lft_thetae_list"]), len(data["lft_thetae_sat_list"]), len(data["bl_thetae_list"])):
+if (len(data["thetae_list"])==0):
     data["PREPROCESS_THETAE"]=1
     data["SAVE_THETAE"]=1
 else:
@@ -289,11 +293,12 @@ prc_list, \
 PRC_VAR, \
 data["PREPROCESS_THETAE"], \
 MODEL_OUTPUT_DIR, \
-data["lft_thetae_list"], \
+THETAE_OUT,\
+data["thetae_list"], \
 LFT_THETAE_VAR, \
-data["lft_thetae_sat_list"], \
+# data["lft_thetae_sat_list"], \
 LFT_THETAE_SAT_VAR, \
-data["bl_thetae_list"], \
+# data["bl_thetae_list"], \
 BL_THETAE_VAR, \
 ta_list, \
 TA_VAR, \
@@ -303,7 +308,7 @@ LEV_VAR, \
 PS_VAR, \
 A_VAR,\
 B_VAR,\
-MODEL, \
+MODEL_NAME, \
 p_lev_mid, \
 # dp, \
 time_idx_delta, \

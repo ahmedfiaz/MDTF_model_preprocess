@@ -24,6 +24,9 @@ from parameters import *
 from vert_cython import vert_integ_variable_bl,vert_integ_exneri_variable_bl,vert_integ_lt_variable_bl
 from vert_cython import find_closest_index
 import os
+import time as tt
+
+t0=tt.time()
 
 
 # Import Python functions specific to Convective Transition Basic Statistics
@@ -76,6 +79,9 @@ else: # Binned data file exists & BIN_ANYWAY=False
 #     binned_output=convecTransBasic_loadAnalyzedData(bin_data["args2"])
 #     print("...Loaded!")
 
+t1=tt.time()
+
+print('Took a total of %.2f minutes'%((t1-t0)/60))
 exit()
 
 ####### MASK ########

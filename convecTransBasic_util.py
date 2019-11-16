@@ -19,7 +19,7 @@
 #    
 # ======================================================================
 # Import standard Python packages
-import numpy
+import numpy as np
 import numba
 import glob
 import os
@@ -42,14 +42,14 @@ from sys import exit, stdout
 
 @jit(nopython=True)
 def convecTransBasic_binTave(lon_idx, CWV_BIN_WIDTH, NUMBER_OF_REGIONS, NUMBER_TEMP_BIN, NUMBER_CWV_BIN, PRECIP_THRESHOLD, REGION, CWV, RAIN, temp, QSAT_INT, p0, p1, p2, pe, q0, q1):
-    for lat_idx in numpy.arange(CWV.shape[1]):
+    for lat_idx in np.arange(CWV.shape[1]):
         reg=REGION[lon_idx,lat_idx]
         if (reg>0 and reg<=NUMBER_OF_REGIONS):
             cwv_idx=CWV[:,lat_idx,lon_idx]
             rain=RAIN[:,lat_idx,lon_idx]
             temp_idx=temp[:,lat_idx,lon_idx]
             qsat_int=QSAT_INT[:,lat_idx,lon_idx]
-            for time_idx in numpy.arange(CWV.shape[0]):
+            for time_idx in np.arange(CWV.shape[0]):
                 if (temp_idx[time_idx]<NUMBER_TEMP_BIN and temp_idx[time_idx]>=0 and cwv_idx[time_idx]<NUMBER_CWV_BIN):
                     p0[reg-1,cwv_idx[time_idx],temp_idx[time_idx]]+=1
                     p1[reg-1,cwv_idx[time_idx],temp_idx[time_idx]]+=rain[time_idx]
@@ -66,13 +66,13 @@ def convecTransBasic_binTave(lon_idx, CWV_BIN_WIDTH, NUMBER_OF_REGIONS, NUMBER_T
 
 @jit(nopython=True)
 def convecTransBasic_binQsatInt(lon_idx, NUMBER_OF_REGIONS, NUMBER_TEMP_BIN, NUMBER_CWV_BIN, PRECIP_THRESHOLD, REGION, CWV, RAIN, temp, p0, p1, p2, pe):
-    for lat_idx in numpy.arange(CWV.shape[1]):
+    for lat_idx in np.arange(CWV.shape[1]):
         reg=REGION[lon_idx,lat_idx]
         if (reg>0 and reg<=NUMBER_OF_REGIONS):
             cwv_idx=CWV[:,lat_idx,lon_idx]
             rain=RAIN[:,lat_idx,lon_idx]
             temp_idx=temp[:,lat_idx,lon_idx]
-            for time_idx in numpy.arange(CWV.shape[0]):
+            for time_idx in np.arange(CWV.shape[0]):
                 if (temp_idx[time_idx]<NUMBER_TEMP_BIN and temp_idx[time_idx]>=0 and cwv_idx[time_idx]<NUMBER_CWV_BIN):
                     p0[reg-1,cwv_idx[time_idx],temp_idx[time_idx]]+=1
                     p1[reg-1,cwv_idx[time_idx],temp_idx[time_idx]]+=rain[time_idx]
@@ -93,7 +93,7 @@ def es_calc(temp):
 	#convert inputs to proper units, forms
 	tempc = temp - tmelt # in C
 	tempcorig = tempc
-	c=numpy.array((0.6105851e+03,0.4440316e+02,0.1430341e+01,0.2641412e-01,0.2995057e-03,0.2031998e-05,0.6936113e-08,0.2564861e-11,-.3704404e-13))
+	c=np.array((0.6105851e+03,0.4440316e+02,0.1430341e+01,0.2641412e-01,0.2995057e-03,0.2031998e-05,0.6936113e-08,0.2564861e-11,-.3704404e-13))
 
 	#calc. es in hPa (!!!)
 	#es = 6.112*EXP(17.67*tempc/(243.5+tempc))
@@ -120,46 +120,46 @@ def generate_region_mask(region_mask_filename, model_netcdf_filename, lat_var, l
     lat_m=matfile["lat"]
     lon_m=matfile["lon"] # 0.125~359.875 deg
     region=matfile["region"]
-    lon_m=numpy.append(lon_m,numpy.reshape(lon_m[0,:],(-1,1))+360,0)
-    lon_m=numpy.append(numpy.reshape(lon_m[-2,:],(-1,1))-360,lon_m,0)
-    region=numpy.append(region,numpy.reshape(region[0,:],(-1,lat_m.size)),0)
-    region=numpy.append(numpy.reshape(region[-2,:],(-1,lat_m.size)),region,0)
+    lon_m=np.append(lon_m,np.reshape(lon_m[0,:],(-1,1))+360,0)
+    lon_m=np.append(np.reshape(lon_m[-2,:],(-1,1))-360,lon_m,0)
+    region=np.append(region,np.reshape(region[0,:],(-1,lat_m.size)),0)
+    region=np.append(np.reshape(region[-2,:],(-1,lat_m.size)),region,0)
 
-    LAT,LON=numpy.meshgrid(lat_m,lon_m,sparse=False,indexing="xy")
-    LAT=numpy.reshape(LAT,(-1,1))
-    LON=numpy.reshape(LON,(-1,1))
-    REGION=numpy.reshape(region,(-1,1))
+    LAT,LON=np.meshgrid(lat_m,lon_m,sparse=False,indexing="xy")
+    LAT=np.reshape(LAT,(-1,1))
+    LON=np.reshape(LON,(-1,1))
+    REGION=np.reshape(region,(-1,1))
 
-    LATLON=numpy.squeeze(numpy.array((LAT,LON)))
+    LATLON=np.squeeze(np.array((LAT,LON)))
     LATLON=LATLON.transpose()
 
     regMaskInterpolator=NearestNDInterpolator(LATLON,REGION)
 
     # Interpolate Region Mask onto Model Grid using Nearest Grid Value
     pr_netcdf=Dataset(model_netcdf_filename,"r")
-    lon=numpy.asarray(pr_netcdf.variables[lon_var][:],dtype="float")
-    lat=numpy.asarray(pr_netcdf.variables[lat_var][:],dtype="float")
+    lon=np.asarray(pr_netcdf.variables[lon_var][:],dtype="float")
+    lat=np.asarray(pr_netcdf.variables[lat_var][:],dtype="float")
     pr_netcdf.close()
     if lon[lon<0.0].size>0:
         lon[lon[lon<0.0]]+=360.0
-    lat=lat[numpy.logical_and(lat>=-20.0,lat<=20.0)]
+    lat=lat[np.logical_and(lat>=-20.0,lat<=20.0)]
 
-    LAT,LON=numpy.meshgrid(lat,lon,sparse=False,indexing="xy")
-    LAT=numpy.reshape(LAT,(-1,1))
-    LON=numpy.reshape(LON,(-1,1))
-    LATLON=numpy.squeeze(numpy.array((LAT,LON)))
+    LAT,LON=np.meshgrid(lat,lon,sparse=False,indexing="xy")
+    LAT=np.reshape(LAT,(-1,1))
+    LON=np.reshape(LON,(-1,1))
+    LATLON=np.squeeze(np.array((LAT,LON)))
     LATLON=LATLON.transpose()
-    REGION=numpy.zeros(LAT.size)
-    for latlon_idx in numpy.arange(REGION.shape[0]):
+    REGION=np.zeros(LAT.size)
+    for latlon_idx in np.arange(REGION.shape[0]):
         REGION[latlon_idx]=regMaskInterpolator(LATLON[latlon_idx,:])
-    REGION=numpy.reshape(REGION.astype(int),(-1,lat.size))
+    REGION=np.reshape(REGION.astype(int),(-1,lat.size))
     
     print("...Generated!")
 
     return REGION
 
     # Use the following 3 lines for plotting the resulting region mask
-    #REGION=numpy.reshape(REGION.astype(int),(-1,lat.size))
+    #REGION=np.reshape(REGION.astype(int),(-1,lat.size))
     #mp.contourf(lon.squeeze(), lat.squeeze(), REGION.T)
     #mp.axes().set_aspect('equal')
 
@@ -174,7 +174,7 @@ def generate_region_mask(region_mask_filename, model_netcdf_filename, lat_var, l
 def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filename, HUS_VAR,\
                         LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL, p_lev_mid, time_idx_delta,\
                         START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
-                        SAVE_THETAE,PREPROCESSING_OUTPUT_DIR,\
+                        SAVE_THETAE,PREPROCESSING_OUTPUT_DIR, THETAE_OUT,\
                         THETAE_LT_VAR,THETAE_SAT_LT_VAR,THETAE_BL_VAR,\
                         TIME_VAR,LAT_VAR,LON_VAR):
 
@@ -186,50 +186,50 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     ### LOAD T & q ###
 
     ta_netcdf=Dataset(ta_netcdf_filename,"r")
-    time=numpy.asarray(ta_netcdf.variables[TIME_VAR][:],dtype="float")
-    lev=numpy.asarray(ta_netcdf.variables[LEV_VAR][:],dtype="float")
-    ps=numpy.asarray(ta_netcdf.variables[PS_VAR][:],dtype="float")
-    a=numpy.asarray(ta_netcdf.variables[A_VAR][:],dtype="float")
-    b=numpy.asarray(ta_netcdf.variables[B_VAR][:],dtype="float")
-    lat=numpy.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
-    lon=numpy.asarray(ta_netcdf.variables[LON_VAR][:],dtype="float")
-    
-    ta=numpy.asarray(ta_netcdf.variables[TA_VAR][:],dtype="float")
-    ta_netcdf.close()
+    time=np.asarray(ta_netcdf.variables[TIME_VAR][:],dtype="float")
+    lev=np.asarray(ta_netcdf.variables[LEV_VAR][:],dtype="float")
+    a=np.asarray(ta_netcdf.variables[A_VAR][:],dtype="float")
+    b=np.asarray(ta_netcdf.variables[B_VAR][:],dtype="float")
+    lat=np.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
+    lon=np.asarray(ta_netcdf.variables[LON_VAR][:],dtype="float")
 
+    ## Take latitudinal slice
+    ilatx=np.where(np.logical_and(lat>=-20.0,lat<=20.0))[0]
+    lat=lat[ilatx]
+
+    ps=np.asarray(ta_netcdf.variables[PS_VAR][:,ilatx,:],dtype="float")
+    ta=np.asarray(ta_netcdf.variables[TA_VAR][:,:,ilatx,:],dtype="float")
+    time_units=str([(j.units) for i,j in ta_netcdf.variables.items() if i=='time'][0])
+    ta_netcdf.close()
+    
     dates_ta=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]
     dates_ta_max,dates_ta_min=max(dates_ta),min(dates_ta)
-    dates_indx=numpy.asarray([i for (i,idt) in enumerate(dates_ta) if (idt<dates_ta_max and idt>dates_ta_min)])
+    dates_indx=np.asarray([i for (i,idt) in enumerate(dates_ta) if (idt<dates_ta_max and idt>dates_ta_min)])
     
     ### READ SP.HUMIDITY ### 
         
     hus_netcdf=Dataset(hus_netcdf_filename,"r")
-    hus=numpy.asarray(hus_netcdf.variables[HUS_VAR][:],dtype="float")
-    time=numpy.asarray(hus_netcdf.variables[TIME_VAR][:],dtype="float")
+    hus=np.asarray(hus_netcdf.variables[HUS_VAR][:,:,ilatx,:],dtype="float")
+    time=np.asarray(hus_netcdf.variables[TIME_VAR][:],dtype="float")
     hus_netcdf.close()
 
     dates_hus=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]    
-    if(len(dates_ta)!=len(dates_hus)):
-        raise Exception('Length of T file is different from q file')
+    assert(len(dates_ta)==len(dates_hus))
     
     ### CREATE PRESSURE LEVELS ###
     pres=b[:,None,None,None]*ps[None,...]+a[:,None,None,None]
 
     ### Define the layers ###    
     pbl_top=ps-100e2 ## The sub-cloud layer is 100 mb thick ##
-    low_top=numpy.zeros_like(ps)
+    low_top=np.zeros_like(ps)
     low_top[:]=500e2  # the mid-troposphere is fixed at 500 mb
 
-    pbl_top=numpy.float_(pbl_top.flatten())
-    low_top=numpy.float_(low_top.flatten())
+    pbl_top=np.float_(pbl_top.flatten())
+    low_top=np.float_(low_top.flatten())
     lev=pres.reshape(*pres.shape[:1],-1)
-#     lev=numpy.float_(pres)
-
-
-    print('Extracting indices')
     
-    pbl_ind=numpy.zeros(pbl_top.size,dtype=numpy.int64)
-    low_ind=numpy.zeros(low_top.size,dtype=numpy.int64)
+    pbl_ind=np.zeros(pbl_top.size,dtype=np.int64)
+    low_ind=np.zeros(low_top.size,dtype=np.int64)
 
     find_closest_index_2D(pbl_top,lev,pbl_ind)
     find_closest_index_2D(low_top,lev,low_ind)
@@ -250,59 +250,84 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     g = 9.80665 
     cpd=1004.
     Po=1025e2
+    REF_THETAE=340.
 
     ### Saturation specific humidity and mixing ratio ###
-    print('ESTIMATING qSAT.')
     stdout.flush()
 
     ### Swap pressure axes for following computation ###
-#     pres=numpy.swapaxes(pres,0,1)
-    ta_flat=numpy.swapaxes(ta,0,1)
+#     pres=np.swapaxes(pres,0,1)
+    ta_flat=np.swapaxes(ta,0,1)
     ta_flat=ta_flat.reshape(*ta_flat.shape[:1],-1)
 
-    hus_flat=numpy.swapaxes(hus,0,1)
+    hus_flat=np.swapaxes(hus,0,1)
     hus_flat=hus_flat.reshape(*hus_flat.shape[:1],-1)
 
-    qs=numpy.zeros_like(hus_flat)
+    thetae_bl=np.zeros_like(pbl_top)
+    thetae_lt=np.zeros_like(pbl_top)
+    thetae_sat_lt=np.zeros_like(pbl_top)
+    wb=np.zeros_like(pbl_top)
     
-    print(ta_flat.shape,hus_flat.shape,lev.shape,pbl_ind.shape,low_ind.shape,qs.shape)
-    
-    compute_layer_thetae(ta_flat, hus_flat, lev, pbl_ind, low_ind, qs)
-    
-    print(qs.max(),qs.min())
+    ### Use trapezoidal rule for approximating the vertical integral ###
+    ### vert. integ.=(b-a)*(f(a)+f(b))/2
+    compute_layer_thetae(ta_flat, hus_flat, lev, pbl_ind, low_ind, thetae_bl, thetae_lt, thetae_sat_lt, wb)
 
-#     Es=es_calc(ta)
-#     ws=(epsilon)*(Es/pres)    
-#     hus_sat=ws/(1+ws)
-#     
-#     w=hus/(1-hus)
-#     e=w*pres/(epsilon+w) # vapor pressure in Pa
+    thetae_bl[thetae_bl==0]=np.nan
+    thetae_lt[thetae_lt==0]=np.nan
+    thetae_sat_lt[thetae_sat_lt==0]=np.nan
 
-    print('ESTIMATING THETAE')
-    
-    ## RH ###
-    rh=hus/hus_sat
-    pd=pres-e # partial pressure of dry air
+    ### Reshape all arrays ###
+    thetae_bl=thetae_bl.reshape(ps.shape)
+    thetae_lt=thetae_lt.reshape(ps.shape)
+    thetae_sat_lt=thetae_sat_lt.reshape(ps.shape)
 
+    print('      '+ta_netcdf_filename+" & "+hus_netcdf_filename+" pre-processed!")
 
+#     Save Pre-Processed tave & qsat_int Fields
+    if SAVE_THETAE==1:
+#         Create PREPROCESSING_OUTPUT_DIR
+        os.system("mkdir -p "+PREPROCESSING_OUTPUT_DIR)
 
-   #Calculate theta_e
-    theta_e=(ta*(Po/pd)**(Rd/cpd))#*((rh)**(-w*Rv/cpd))*numpy.exp(Lv0*w/(cpd*ta))
+#         Get necessary coordinates/variables for netCDF files
 
-#    Saturated theta_e
-#     theta_e_sat=(ta*(Po/pd)**(Rd/cpd))#*numpy.exp(Lv0*ws/(cpd*ta))
+        thetae_output_filename=PREPROCESSING_OUTPUT_DIR+ta_netcdf_filename.split('/')[-1].replace(TA_VAR,THETAE_OUT)
+        thetae_output_netcdf=Dataset(thetae_output_filename,"w",format="NETCDF4",zlib='True')
+        thetae_output_netcdf.description="Theta_e averaged over the BL (100 hPa above surface)"\
+                                    +"Theta_e and Theta_e_sat averaged over the LT (100 hPa above surface to 500 hPa) for "+MODEL
+        thetae_output_netcdf.source="Convective Onset Statistics Diagnostic Package \
+        - as part of the NOAA Model Diagnostic Task Force (MDTF) effort"
 
-    print(theta_e.max(),theta_e.min())
-#     print(theta_e.min(),theta_e_sat.min())
-    
-    exit()
+        lon_dim=thetae_output_netcdf.createDimension(LON_VAR,len(lon))
+        lon_val=thetae_output_netcdf.createVariable(LON_VAR,np.float64,(LON_VAR,))
+        lon_val.units="degree"
+        lon_val[:]=lon
 
-#     pres_3d=numpy.zeros_like(t)
-#     pres_3d[:]=pres[:,None,:,:]
-# 
-#     levels=numpy.zeros_like(t)        
-#     levels[:]=lev[None,:,None,None]
-    
+        lat_dim=thetae_output_netcdf.createDimension(LAT_VAR,len(lat))
+        lat_val=thetae_output_netcdf.createVariable(LAT_VAR,np.float64,(LAT_VAR,))
+        lat_val.units="degree_north"
+        lat_val[:]=lat
+
+        time_dim=thetae_output_netcdf.createDimension(TIME_VAR,None)
+        time_val=thetae_output_netcdf.createVariable(TIME_VAR,np.float64,(TIME_VAR,))
+        time_val.units=time_units
+        time_val[:]=time
+
+        thetabl_val=thetae_output_netcdf.createVariable(THETAE_BL_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
+        thetabl_val.units="K"
+        thetabl_val[:]=thetae_bl
+
+        thetalt_val=thetae_output_netcdf.createVariable(THETAE_LT_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
+        thetalt_val.units="K"
+        thetalt_val[:]=thetae_lt
+
+        thetalt_sat_val=thetae_output_netcdf.createVariable(THETAE_SAT_LT_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
+        thetalt_sat_val.units="K"
+        thetalt_sat_val[:]=thetae_sat_lt
+
+        thetae_output_netcdf.close()
+
+        print('      '+thetae_output_filename+" saved!")
+
     
     
 
@@ -335,11 +360,10 @@ def convecTransLev2_calc_model(*argsv):
     PRC_VAR,\
     PREPROCESS_THETAE,\
     MODEL_OUTPUT_DIR,\
-    lft_thetae_list,\
+    THETAE_OUT,\
+    thetae_list,\
     LFT_THETAE_VAR,\
-    lft_thetae_sat_list,\
     LFT_THETAE_SAT_VAR,\
-    bl_thetae_list,\
     BL_THETAE_VAR,\
     ta_list,\
     TA_VAR,\
@@ -365,11 +389,11 @@ def convecTransLev2_calc_model(*argsv):
     # Pre-process temperature field if necessary
     if PREPROCESS_THETAE==1:
         print("   Start pre-processing atmospheric temperature & moisture fields...")
-        for li in numpy.arange(len(pr_list)):
+        for li in np.arange(len(pr_list)):
             convecTransLev2_calcthetae_ML(ta_list[li], TA_VAR, hus_list[li], HUS_VAR,\
                                 LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL, p_lev_mid, time_idx_delta,\
                                 START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
-                                SAVE_THETAE,PREPROCESSING_OUTPUT_DIR,\
+                                SAVE_THETAE,PREPROCESSING_OUTPUT_DIR,THETAE_OUT,\
                                 LFT_THETAE_VAR,LFT_THETAE_SAT_VAR,BL_THETAE_VAR,\
                                 TIME_VAR,LAT_VAR,LON_VAR)
         # Re-load file lists for tave & qsat_int
@@ -408,15 +432,15 @@ def convecTransBasic_calcTaveQsatInt(ta_netcdf_filename,TA_VAR,PRES_VAR,MODEL,\
     # Calculate tave & qsat_int
     #  Column: 1000-200mb (+/- dp mb)
     ta_netcdf=Dataset(ta_netcdf_filename,"r")
-    lat=numpy.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
-    pfull=numpy.asarray(ta_netcdf.variables[PRES_VAR][:],dtype="float")
+    lat=np.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
+    pfull=np.asarray(ta_netcdf.variables[PRES_VAR][:],dtype="float")
     if (max(pfull)>2000): # If units: Pa
         pfull*=0.01
     FLIP_PRES=(pfull[1]-pfull[0]<0)
     if FLIP_PRES:
-        pfull=numpy.flipud(pfull)
-    tave=numpy.array([])
-    qsat_int=numpy.array([])
+        pfull=np.flipud(pfull)
+    tave=np.array([])
+    qsat_int=np.array([])
 
     time_idx_start=0
 
@@ -433,19 +457,19 @@ def convecTransBasic_calcTaveQsatInt(ta_netcdf_filename,TA_VAR,PRES_VAR,MODEL,\
             +"for time steps "\
             +str(time_idx_start)+"-"+str(time_idx_end))
 
-        p_min=numpy.sum(pfull<=p_lev_top)-1
+        p_min=np.sum(pfull<=p_lev_top)-1
         if (pfull[p_min+1]<p_lev_top+dp):
             p_min=p_min+1
-        p_max=numpy.sum(pfull<=p_lev_bottom)-1
+        p_max=np.sum(pfull<=p_lev_bottom)-1
         if (p_max+1<pfull.size and pfull[p_max]<p_lev_bottom-dp):
             p_max=p_max+1
-        plev=numpy.copy(pfull[p_min:p_max+1])
+        plev=np.copy(pfull[p_min:p_max+1])
         # ta[time,p,lat,lon]
         if FLIP_PRES:
-            ta=numpy.asarray(ta_netcdf.variables[TA_VAR][time_idx_start:time_idx_end,pfull.size-(p_max+1):pfull.size-p_min,numpy.logical_and(lat>=-20.0,lat<=20.0),:],dtype="float")
-            ta=numpy.fliplr(ta)
+            ta=np.asarray(ta_netcdf.variables[TA_VAR][time_idx_start:time_idx_end,pfull.size-(p_max+1):pfull.size-p_min,np.logical_and(lat>=-20.0,lat<=20.0),:],dtype="float")
+            ta=np.fliplr(ta)
         else:
-            ta=numpy.asarray(ta_netcdf.variables[TA_VAR][time_idx_start:time_idx_end,p_min:p_max+1,numpy.logical_and(lat>=-20.0,lat<=20.0),:],dtype="float")
+            ta=np.asarray(ta_netcdf.variables[TA_VAR][time_idx_start:time_idx_end,p_min:p_max+1,np.logical_and(lat>=-20.0,lat<=20.0),:],dtype="float")
         time_idx_start=time_idx_end
         p_max=p_max-p_min
         p_min=0
@@ -471,12 +495,12 @@ def convecTransBasic_calcTaveQsatInt(ta_netcdf_filename,TA_VAR,PRES_VAR,MODEL,\
         if (plev[p_max]<p_lev_bottom-dp):
             # Update plev(p_max+1) <-- p_lev_bottom
             #  AND ta(p_max+1) <-- ta(p_lev_bottom) by extrapolation
-            ta=numpy.append(ta,numpy.expand_dims(ta[:,p_max,:,:] \
+            ta=np.append(ta,np.expand_dims(ta[:,p_max,:,:] \
                             +(p_lev_bottom-plev[p_max]) \
                             /(plev[p_max]-plev[p_max-1]) \
                             *(ta[:,p_max,:,:]-ta[:,p_max-1,:,:]),1), \
                             axis=1)
-            plev=numpy.append(plev,p_lev_bottom)
+            plev=np.append(plev,p_lev_bottom)
             p_max=p_max+1
 
         # Integrate between level p_min and p_max
@@ -484,14 +508,14 @@ def convecTransBasic_calcTaveQsatInt(ta_netcdf_filename,TA_VAR,PRES_VAR,MODEL,\
         for pidx in range(p_min+1,p_max-1+1):
             tave_interim=tave_interim+ta[:,pidx,:,:]*(plev[pidx+1]-plev[pidx-1])
         tave_interim=tave_interim+ta[:,p_max,:,:]*(plev[p_max]-plev[p_max-1])
-        tave_interim=numpy.squeeze(tave_interim)/2/(plev[p_max]-plev[p_min])
+        tave_interim=np.squeeze(tave_interim)/2/(plev[p_max]-plev[p_min])
         if (tave.size==0):
             tave=tave_interim
         else:
-            tave=numpy.append(tave,tave_interim,axis=0)
+            tave=np.append(tave,tave_interim,axis=0)
 
         # Integrate Saturation Specific Humidity between level p_min and p_max 
-        Es=Es0*(ta/Tk0)**((cpv-cl)/Rv)*numpy.exp((Lv0+(cl-cpv)*Tk0)/Rv*(1/Tk0-1/ta))
+        Es=Es0*(ta/Tk0)**((cpv-cl)/Rv)*np.exp((Lv0+(cl-cpv)*Tk0)/Rv*(1/Tk0-1/ta))
         qsat_interim=Es[:,p_min,:,:]*(plev[p_min+1]-plev[p_min])/plev[p_min]
         for pidx in range(p_min+1,p_max-1+1):
             qsat_interim=qsat_interim+Es[:,pidx,:,:]*(plev[pidx+1]-plev[pidx-1])/plev[pidx]
@@ -500,7 +524,7 @@ def convecTransBasic_calcTaveQsatInt(ta_netcdf_filename,TA_VAR,PRES_VAR,MODEL,\
         if (qsat_int.size==0):
             qsat_int=qsat_interim
         else:
-            qsat_int=numpy.append(qsat_int,qsat_interim,axis=0)
+            qsat_int=np.append(qsat_int,qsat_interim,axis=0)
 
     ta_netcdf.close()
     # End-while time_idx_start
@@ -515,9 +539,9 @@ def convecTransBasic_calcTaveQsatInt(ta_netcdf_filename,TA_VAR,PRES_VAR,MODEL,\
         # Get necessary coordinates/variables for netCDF files
         ta_netcdf=Dataset(ta_netcdf_filename,"r")
         time=ta_netcdf.variables[TIME_VAR]
-        longitude=numpy.asarray(ta_netcdf.variables[LON_VAR][:],dtype="float")
-        latitude=numpy.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
-        latitude=latitude[numpy.logical_and(latitude>=-20.0,latitude<=20.0)]
+        longitude=np.asarray(ta_netcdf.variables[LON_VAR][:],dtype="float")
+        latitude=np.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
+        latitude=latitude[np.logical_and(latitude>=-20.0,latitude<=20.0)]
 
         # Save 1000-200mb Column Average Temperature as tave
         tave_output_filename=PREPROCESSING_OUTPUT_DIR+"/"+ta_netcdf_filename.split('/')[-1].replace("."+TA_VAR+".","."+TAVE_VAR+".")
@@ -528,21 +552,21 @@ def convecTransBasic_calcTaveQsatInt(ta_netcdf_filename,TA_VAR,PRES_VAR,MODEL,\
         - as part of the NOAA Model Diagnostic Task Force (MDTF) effort"
 
         lon_dim=tave_output_netcdf.createDimension(LON_VAR,len(longitude))
-        lon_val=tave_output_netcdf.createVariable(LON_VAR,numpy.float64,(LON_VAR,))
+        lon_val=tave_output_netcdf.createVariable(LON_VAR,np.float64,(LON_VAR,))
         lon_val.units="degree"
         lon_val[:]=longitude
 
         lat_dim=tave_output_netcdf.createDimension(LAT_VAR,len(latitude))
-        lat_val=tave_output_netcdf.createVariable(LAT_VAR,numpy.float64,(LAT_VAR,))
+        lat_val=tave_output_netcdf.createVariable(LAT_VAR,np.float64,(LAT_VAR,))
         lat_val.units="degree_north"
         lat_val[:]=latitude
 
         time_dim=tave_output_netcdf.createDimension(TIME_VAR,None)
-        time_val=tave_output_netcdf.createVariable(TIME_VAR,numpy.float64,(TIME_VAR,))
+        time_val=tave_output_netcdf.createVariable(TIME_VAR,np.float64,(TIME_VAR,))
         time_val.units=time.units
         time_val[:]=time[:]
 
-        tave_val=tave_output_netcdf.createVariable(TAVE_VAR,numpy.float64,(TIME_VAR,LAT_VAR,LON_VAR))
+        tave_val=tave_output_netcdf.createVariable(TAVE_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
         tave_val.units="K"
         tave_val[:,:,:]=tave
 
@@ -559,21 +583,21 @@ def convecTransBasic_calcTaveQsatInt(ta_netcdf_filename,TA_VAR,PRES_VAR,MODEL,\
         - as part of the NOAA Model Diagnostic Task Force (MDTF) effort"
 
         lon_dim=qsat_int_output_netcdf.createDimension(LON_VAR,len(longitude))
-        lon_val=qsat_int_output_netcdf.createVariable(LON_VAR,numpy.float64,(LON_VAR,))
+        lon_val=qsat_int_output_netcdf.createVariable(LON_VAR,np.float64,(LON_VAR,))
         lon_val.units="degree"
         lon_val[:]=longitude
 
         lat_dim=qsat_int_output_netcdf.createDimension(LAT_VAR,len(latitude))
-        lat_val=qsat_int_output_netcdf.createVariable(LAT_VAR,numpy.float64,(LAT_VAR,))
+        lat_val=qsat_int_output_netcdf.createVariable(LAT_VAR,np.float64,(LAT_VAR,))
         lat_val.units="degree_north"
         lat_val[:]=latitude
 
         time_dim=qsat_int_output_netcdf.createDimension(TIME_VAR,None)
-        time_val=qsat_int_output_netcdf.createVariable(TIME_VAR,numpy.float64,(TIME_VAR,))
+        time_val=qsat_int_output_netcdf.createVariable(TIME_VAR,np.float64,(TIME_VAR,))
         time_val.units=time.units
         time_val[:]=time[:]
 
-        qsat_int_val=qsat_int_output_netcdf.createVariable(QSAT_INT_VAR,numpy.float64,(TIME_VAR,LAT_VAR,LON_VAR))
+        qsat_int_val=qsat_int_output_netcdf.createVariable(QSAT_INT_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
         qsat_int_val.units="mm"
         qsat_int_val[:,:,:]=qsat_int
 
@@ -635,7 +659,7 @@ def convecTransBasic_calc_model(REGION,*argsv):
     # Pre-process temperature field if necessary
     if PREPROCESS_TA==1:
         print("   Start pre-processing atmospheric temperature fields...")
-        for li in numpy.arange(len(pr_list)):
+        for li in np.arange(len(pr_list)):
             convecTransBasic_calcTaveQsatInt(ta_list[li],TA_VAR,PRES_VAR,MODEL,\
                                 p_lev_bottom,p_lev_top,dp,time_idx_delta,\
                                 SAVE_TAVE_QSAT_INT,PREPROCESSING_OUTPUT_DIR,\
@@ -647,15 +671,15 @@ def convecTransBasic_calc_model(REGION,*argsv):
     # Allocate Memory for Arrays for Binning Output
     
     # Define Bin Centers
-    cwv_bin_center=numpy.arange(CWV_BIN_WIDTH,CWV_RANGE_MAX+CWV_BIN_WIDTH,CWV_BIN_WIDTH)
+    cwv_bin_center=np.arange(CWV_BIN_WIDTH,CWV_RANGE_MAX+CWV_BIN_WIDTH,CWV_BIN_WIDTH)
     
     # Bulk Tropospheric Temperature Measure (1:tave, or 2:qsat_int)
     if BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1:
-        tave_bin_center=numpy.arange(T_RANGE_MIN,T_RANGE_MAX+T_BIN_WIDTH,T_BIN_WIDTH)
+        tave_bin_center=np.arange(T_RANGE_MIN,T_RANGE_MAX+T_BIN_WIDTH,T_BIN_WIDTH)
         temp_bin_center=tave_bin_center
         temp_bin_width=T_BIN_WIDTH
     elif BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==2:
-        qsat_int_bin_center=numpy.arange(Q_RANGE_MIN,Q_RANGE_MAX+Q_BIN_WIDTH,Q_BIN_WIDTH)
+        qsat_int_bin_center=np.arange(Q_RANGE_MIN,Q_RANGE_MAX+Q_BIN_WIDTH,Q_BIN_WIDTH)
         temp_bin_center=qsat_int_bin_center
         temp_bin_width=Q_BIN_WIDTH
     
@@ -664,49 +688,49 @@ def convecTransBasic_calc_model(REGION,*argsv):
     temp_offset=temp_bin_center[0]-0.5*temp_bin_width
 
     # Allocate Memory for Arrays
-    P0=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
-    P1=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
-    P2=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
-    PE=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
+    P0=np.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
+    P1=np.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
+    P2=np.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
+    PE=np.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
     if BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1:
-        Q0=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_TEMP_BIN))
-        Q1=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_TEMP_BIN))
+        Q0=np.zeros((NUMBER_OF_REGIONS,NUMBER_TEMP_BIN))
+        Q1=np.zeros((NUMBER_OF_REGIONS,NUMBER_TEMP_BIN))
 
     # Binning by calling convecTransBasic_binTave or convecTransBasic_binQsatInt
 
     print("   Start binning...")
 
-    for li in numpy.arange(len(pr_list)):
+    for li in np.arange(len(pr_list)):
 
         pr_netcdf=Dataset(pr_list[li],"r")
-        lat=numpy.asarray(pr_netcdf.variables[LAT_VAR][:],dtype="float")
-        pr=numpy.squeeze(numpy.asarray(pr_netcdf.variables[PR_VAR][:,:,:],dtype="float"))
+        lat=np.asarray(pr_netcdf.variables[LAT_VAR][:],dtype="float")
+        pr=np.squeeze(np.asarray(pr_netcdf.variables[PR_VAR][:,:,:],dtype="float"))
         pr_netcdf.close()
         # Units: mm/s --> mm/hr
-        pr=pr[:,numpy.logical_and(lat>=-20.0,lat<=20.0),:]*3.6e3*float(os.environ["pr_conversion_factor"])
+        pr=pr[:,np.logical_and(lat>=-20.0,lat<=20.0),:]*3.6e3*float(os.environ["pr_conversion_factor"])
         print("      "+pr_list[li]+" Loaded!")
 
         prw_netcdf=Dataset(prw_list[li],"r")
-        lat=numpy.asarray(prw_netcdf.variables[LAT_VAR][:],dtype="float")
-        prw=numpy.squeeze(numpy.asarray(prw_netcdf.variables[PRW_VAR][:,:,:],dtype="float"))
+        lat=np.asarray(prw_netcdf.variables[LAT_VAR][:],dtype="float")
+        prw=np.squeeze(np.asarray(prw_netcdf.variables[PRW_VAR][:,:,:],dtype="float"))
         prw_netcdf.close()
-        prw=prw[:,numpy.logical_and(lat>=-20.0,lat<=20.0),:]
+        prw=prw[:,np.logical_and(lat>=-20.0,lat<=20.0),:]
         print("      "+prw_list[li]+" Loaded!")
         
         qsat_int_netcdf=Dataset(qsat_int_list[li],"r")
-        lat=numpy.asarray(qsat_int_netcdf.variables[LAT_VAR][:],dtype="float")
-        qsat_int=numpy.squeeze(numpy.asarray(qsat_int_netcdf.variables[QSAT_INT_VAR][:,:,:],dtype="float"))
+        lat=np.asarray(qsat_int_netcdf.variables[LAT_VAR][:],dtype="float")
+        qsat_int=np.squeeze(np.asarray(qsat_int_netcdf.variables[QSAT_INT_VAR][:,:,:],dtype="float"))
         qsat_int_netcdf.close()
-        qsat_int=qsat_int[:,numpy.logical_and(lat>=-20.0,lat<=20.0),:]
+        qsat_int=qsat_int[:,np.logical_and(lat>=-20.0,lat<=20.0),:]
             
         print("      "+qsat_int_list[li]+" Loaded!")
             
         if BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1:
             tave_netcdf=Dataset(tave_list[li],"r")
-            lat=numpy.asarray(tave_netcdf.variables[LAT_VAR][:],dtype="float")
-            tave=numpy.squeeze(numpy.asarray(tave_netcdf.variables[TAVE_VAR][:,:,:],dtype="float"))
+            lat=np.asarray(tave_netcdf.variables[LAT_VAR][:],dtype="float")
+            tave=np.squeeze(np.asarray(tave_netcdf.variables[TAVE_VAR][:,:,:],dtype="float"))
             tave_netcdf.close()
-            tave=tave[:,numpy.logical_and(lat>=-20.0,lat<=20.0),:]
+            tave=tave[:,np.logical_and(lat>=-20.0,lat<=20.0),:]
             
             print("      "+tave_list[li]+" Loaded!")
            
@@ -728,14 +752,14 @@ def convecTransBasic_calc_model(REGION,*argsv):
 
         # Binning is structured in the following way to avoid potential round-off issue
         #  (an issue arise when the total number of events reaches about 1e+8)
-        for lon_idx in numpy.arange(CWV.shape[2]):
-            p0=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
-            p1=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
-            p2=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
-            pe=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
+        for lon_idx in np.arange(CWV.shape[2]):
+            p0=np.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
+            p1=np.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
+            p2=np.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
+            pe=np.zeros((NUMBER_OF_REGIONS,NUMBER_CWV_BIN,NUMBER_TEMP_BIN))
             if BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1:
-                q0=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_TEMP_BIN))
-                q1=numpy.zeros((NUMBER_OF_REGIONS,NUMBER_TEMP_BIN))
+                q0=np.zeros((NUMBER_OF_REGIONS,NUMBER_TEMP_BIN))
+                q1=np.zeros((NUMBER_OF_REGIONS,NUMBER_TEMP_BIN))
                 convecTransBasic_binTave(lon_idx, CWV_BIN_WIDTH, \
                             NUMBER_OF_REGIONS, NUMBER_TEMP_BIN, NUMBER_CWV_BIN, PRECIP_THRESHOLD, \
                             REGION, CWV, RAIN, temp, QSAT_INT, \
@@ -767,59 +791,59 @@ def convecTransBasic_calc_model(REGION,*argsv):
     bin_output_netcdf.PRECIP_THRESHOLD=PRECIP_THRESHOLD
 
     region=bin_output_netcdf.createDimension("region",NUMBER_OF_REGIONS)
-    reg=bin_output_netcdf.createVariable("region",numpy.float64,("region",))
-    reg=numpy.arange(1,NUMBER_OF_REGIONS+1)
+    reg=bin_output_netcdf.createVariable("region",np.float64,("region",))
+    reg=np.arange(1,NUMBER_OF_REGIONS+1)
 
     cwv=bin_output_netcdf.createDimension("cwv",len(cwv_bin_center))
-    prw=bin_output_netcdf.createVariable("cwv",numpy.float64,("cwv",))
+    prw=bin_output_netcdf.createVariable("cwv",np.float64,("cwv",))
     prw.units="mm"
     prw[:]=cwv_bin_center
 
     if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
         tave=bin_output_netcdf.createDimension(TAVE_VAR,len(tave_bin_center))
-        temp=bin_output_netcdf.createVariable(TAVE_VAR,numpy.float64,(TAVE_VAR,))
+        temp=bin_output_netcdf.createVariable(TAVE_VAR,np.float64,(TAVE_VAR,))
         temp.units="K"
         temp[:]=tave_bin_center
 
-        p0=bin_output_netcdf.createVariable("P0",numpy.float64,("region","cwv",TAVE_VAR))
+        p0=bin_output_netcdf.createVariable("P0",np.float64,("region","cwv",TAVE_VAR))
         p0[:,:,:]=P0
 
-        p1=bin_output_netcdf.createVariable("P1",numpy.float64,("region","cwv",TAVE_VAR))
+        p1=bin_output_netcdf.createVariable("P1",np.float64,("region","cwv",TAVE_VAR))
         p1.units="mm/hr"
         p1[:,:,:]=P1
 
-        p2=bin_output_netcdf.createVariable("P2",numpy.float64,("region","cwv",TAVE_VAR))
+        p2=bin_output_netcdf.createVariable("P2",np.float64,("region","cwv",TAVE_VAR))
         p2.units="mm^2/hr^2"
         p2[:,:,:]=P2
 
-        pe=bin_output_netcdf.createVariable("PE",numpy.float64,("region","cwv",TAVE_VAR))
+        pe=bin_output_netcdf.createVariable("PE",np.float64,("region","cwv",TAVE_VAR))
         pe[:,:,:]=PE
 
-        q0=bin_output_netcdf.createVariable("Q0",numpy.float64,("region",TAVE_VAR))
+        q0=bin_output_netcdf.createVariable("Q0",np.float64,("region",TAVE_VAR))
         q0[:,:]=Q0
 
-        q1=bin_output_netcdf.createVariable("Q1",numpy.float64,("region",TAVE_VAR))
+        q1=bin_output_netcdf.createVariable("Q1",np.float64,("region",TAVE_VAR))
         q1.units="mm"
         q1[:,:]=Q1
 
     elif (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==2):
         qsat_int=bin_output_netcdf.createDimension(QSAT_INT_VAR,len(qsat_int_bin_center))
-        temp=bin_output_netcdf.createVariable(QSAT_INT_VAR,numpy.float64,(QSAT_INT_VAR,))
+        temp=bin_output_netcdf.createVariable(QSAT_INT_VAR,np.float64,(QSAT_INT_VAR,))
         temp.units="mm"
         temp[:]=qsat_int_bin_center
 
-        p0=bin_output_netcdf.createVariable("P0",numpy.float64,("region","cwv",QSAT_INT_VAR))
+        p0=bin_output_netcdf.createVariable("P0",np.float64,("region","cwv",QSAT_INT_VAR))
         p0[:,:,:]=P0
 
-        p1=bin_output_netcdf.createVariable("P1",numpy.float64,("region","cwv",QSAT_INT_VAR))
+        p1=bin_output_netcdf.createVariable("P1",np.float64,("region","cwv",QSAT_INT_VAR))
         p1.units="mm/hr"
         p1[:,:,:]=P1
 
-        p2=bin_output_netcdf.createVariable("P2",numpy.float64,("region","cwv",QSAT_INT_VAR))
+        p2=bin_output_netcdf.createVariable("P2",np.float64,("region","cwv",QSAT_INT_VAR))
         p2.units="mm^2/hr^2"
         p2[:,:,:]=P2
 
-        pe=bin_output_netcdf.createVariable("PE",numpy.float64,("region","cwv",QSAT_INT_VAR))
+        pe=bin_output_netcdf.createVariable("PE",np.float64,("region","cwv",QSAT_INT_VAR))
         pe[:,:,:]=PE
 
     bin_output_netcdf.close()
@@ -849,18 +873,18 @@ def convecTransBasic_loadAnalyzedData(*argsv):
         if bin_output_filename.split('.')[-1]=='nc':
             bin_output_netcdf=Dataset(bin_output_filename,"r")
 
-            cwv_bin_center=numpy.asarray(bin_output_netcdf.variables["cwv"][:],dtype="float")
-            P0=numpy.asarray(bin_output_netcdf.variables["P0"][:,:,:],dtype="float")
-            P1=numpy.asarray(bin_output_netcdf.variables["P1"][:,:,:],dtype="float")
-            P2=numpy.asarray(bin_output_netcdf.variables["P2"][:,:,:],dtype="float")
-            PE=numpy.asarray(bin_output_netcdf.variables["PE"][:,:,:],dtype="float")
+            cwv_bin_center=np.asarray(bin_output_netcdf.variables["cwv"][:],dtype="float")
+            P0=np.asarray(bin_output_netcdf.variables["P0"][:,:,:],dtype="float")
+            P1=np.asarray(bin_output_netcdf.variables["P1"][:,:,:],dtype="float")
+            P2=np.asarray(bin_output_netcdf.variables["P2"][:,:,:],dtype="float")
+            PE=np.asarray(bin_output_netcdf.variables["PE"][:,:,:],dtype="float")
             PRECIP_THRESHOLD=bin_output_netcdf.getncattr("PRECIP_THRESHOLD")
             if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
-                temp_bin_center=numpy.asarray(bin_output_netcdf.variables[TAVE_VAR][:],dtype="float")
-                Q0=numpy.asarray(bin_output_netcdf.variables["Q0"][:,:],dtype="float")
-                Q1=numpy.asarray(bin_output_netcdf.variables["Q1"][:,:],dtype="float") 
+                temp_bin_center=np.asarray(bin_output_netcdf.variables[TAVE_VAR][:],dtype="float")
+                Q0=np.asarray(bin_output_netcdf.variables["Q0"][:,:],dtype="float")
+                Q1=np.asarray(bin_output_netcdf.variables["Q1"][:,:],dtype="float") 
             elif (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==2):
-                temp_bin_center=numpy.asarray(bin_output_netcdf.variables[QSAT_INT_VAR][:],dtype="float")
+                temp_bin_center=np.asarray(bin_output_netcdf.variables[QSAT_INT_VAR][:],dtype="float")
                 Q0=[]
                 Q1=[]
             CWV_BIN_WIDTH=cwv_bin_center[1]-cwv_bin_center[0]
@@ -974,19 +998,19 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
     #  if the binned OBS data exists, checking by P0_obs==[]
     if (P0_obs!=[]):
         # Post-binning Processing before Plotting
-        P0_obs[P0_obs==0.0]=numpy.nan
+        P0_obs[P0_obs==0.0]=np.nan
         P_obs=P1_obs/P0_obs
         CP_obs=PE_obs/P0_obs
-        PDF_obs=numpy.zeros(P0_obs.shape)
-        for reg in numpy.arange(P0_obs.shape[0]):
-            PDF_obs[reg,:,:]=P0_obs[reg,:,:]/numpy.nansum(P0_obs[reg,:,:])/CWV_BIN_WIDTH_obs
+        PDF_obs=np.zeros(P0_obs.shape)
+        for reg in np.arange(P0_obs.shape[0]):
+            PDF_obs[reg,:,:]=P0_obs[reg,:,:]/np.nansum(P0_obs[reg,:,:])/CWV_BIN_WIDTH_obs
         # Bins with PDF>PDF_THRESHOLD
-        pdf_gt_th_obs=numpy.zeros(PDF_obs.shape)
-        with numpy.errstate(invalid="ignore"):
+        pdf_gt_th_obs=np.zeros(PDF_obs.shape)
+        with np.errstate(invalid="ignore"):
             pdf_gt_th_obs[PDF_obs>PDF_THRESHOLD]=1
 
         # Indicator of (temp,reg) with wide CWV range
-        t_reg_I_obs=(numpy.squeeze(numpy.sum(pdf_gt_th_obs,axis=1))*CWV_BIN_WIDTH_obs>CWV_RANGE_THRESHOLD)
+        t_reg_I_obs=(np.squeeze(np.sum(pdf_gt_th_obs,axis=1))*CWV_BIN_WIDTH_obs>CWV_RANGE_THRESHOLD)
 
         ### Connected Component Section
         # The CWV_RANGE_THRESHOLD-Criterion must be satisfied by a connected component
@@ -995,11 +1019,11 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
         #  But when models behave "funny" one may miss by turning on this section
         # For fitting procedure (finding critical CWV at which the precip picks up)
         #  Default: on
-        for reg in numpy.arange(P0_obs.shape[0]):
-            for Tidx in numpy.arange(P0_obs.shape[2]):
+        for reg in np.arange(P0_obs.shape[0]):
+            for Tidx in np.arange(P0_obs.shape[2]):
                 if t_reg_I_obs[reg,Tidx]:
                     G=networkx.DiGraph()
-                    for cwv_idx in numpy.arange(pdf_gt_th_obs.shape[1]-1):
+                    for cwv_idx in np.arange(pdf_gt_th_obs.shape[1]-1):
                         if (pdf_gt_th_obs[reg,cwv_idx,Tidx]>0 and pdf_gt_th_obs[reg,cwv_idx+1,Tidx]>0):
                             G.add_path([cwv_idx,cwv_idx+1])
                     largest = max(networkx.weakly_connected_component_subgraphs(G),key=len)
@@ -1014,41 +1038,41 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
         ### End of Connected Component Section    
 
         # Copy P1, CP into p1, cp for (temp,reg) with "wide CWV range" & "large PDF"
-        p1_obs=numpy.zeros(P1_obs.shape)
-        cp_obs=numpy.zeros(CP_obs.shape)
-        for reg in numpy.arange(P1_obs.shape[0]):
-            for Tidx in numpy.arange(P1_obs.shape[2]):
+        p1_obs=np.zeros(P1_obs.shape)
+        cp_obs=np.zeros(CP_obs.shape)
+        for reg in np.arange(P1_obs.shape[0]):
+            for Tidx in np.arange(P1_obs.shape[2]):
                 if t_reg_I_obs[reg,Tidx]:
-                    p1_obs[reg,:,Tidx]=numpy.copy(P_obs[reg,:,Tidx])
-                    cp_obs[reg,:,Tidx]=numpy.copy(CP_obs[reg,:,Tidx])
-        p1_obs[pdf_gt_th_obs==0]=numpy.nan
-        cp_obs[pdf_gt_th_obs==0]=numpy.nan
-        pdf_obs=numpy.copy(PDF_obs)
+                    p1_obs[reg,:,Tidx]=np.copy(P_obs[reg,:,Tidx])
+                    cp_obs[reg,:,Tidx]=np.copy(CP_obs[reg,:,Tidx])
+        p1_obs[pdf_gt_th_obs==0]=np.nan
+        cp_obs[pdf_gt_th_obs==0]=np.nan
+        pdf_obs=np.copy(PDF_obs)
 
-        for reg in numpy.arange(P1_obs.shape[0]):
-            for Tidx in numpy.arange(P1_obs.shape[2]):
+        for reg in np.arange(P1_obs.shape[0]):
+            for Tidx in np.arange(P1_obs.shape[2]):
                 if (t_reg_I_obs[reg,Tidx] and cp_obs[reg,:,Tidx][cp_obs[reg,:,Tidx]>=0.0].size>0):
-                    if (numpy.max(cp_obs[reg,:,Tidx][cp_obs[reg,:,Tidx]>=0])<CP_THRESHOLD):
+                    if (np.max(cp_obs[reg,:,Tidx][cp_obs[reg,:,Tidx]>=0])<CP_THRESHOLD):
                         t_reg_I_obs[reg,Tidx]=False
                 else:
                     t_reg_I_obs[reg,Tidx]=False
                     
-        for reg in numpy.arange(P1_obs.shape[0]):
-            for Tidx in numpy.arange(P1_obs.shape[2]):
+        for reg in np.arange(P1_obs.shape[0]):
+            for Tidx in np.arange(P1_obs.shape[2]):
                 if (~t_reg_I_obs[reg,Tidx]):
-                    p1_obs[reg,:,Tidx]=numpy.nan
-                    cp_obs[reg,:,Tidx]=numpy.nan
-                    pdf_obs[reg,:,Tidx]=numpy.nan
+                    p1_obs[reg,:,Tidx]=np.nan
+                    cp_obs[reg,:,Tidx]=np.nan
+                    pdf_obs[reg,:,Tidx]=np.nan
         pdf_pe_obs=pdf_obs*cp_obs
 
         # Temperature range for plotting
-        TEMP_MIN_obs=numpy.where(numpy.sum(t_reg_I_obs,axis=0)>=1)[0][0]
-        TEMP_MAX_obs=numpy.where(numpy.sum(t_reg_I_obs,axis=0)>=1)[0][-1]
+        TEMP_MIN_obs=np.where(np.sum(t_reg_I_obs,axis=0)>=1)[0][0]
+        TEMP_MAX_obs=np.where(np.sum(t_reg_I_obs,axis=0)>=1)[0][-1]
         # ======================================================================
         # ======================Start Plot OBS Binned Data======================
         # ======================================================================
         NoC=TEMP_MAX_obs-TEMP_MIN_obs+1 # Number of Colors
-        scatter_colors = cm.jet(numpy.linspace(0,1,NoC,endpoint=True))
+        scatter_colors = cm.jet(np.linspace(0,1,NoC,endpoint=True))
 
         axes_fontsize,legend_fonsize,marker_size,xtick_pad,figsize1,figsize2 = fig_params['f0'] 
 
@@ -1058,7 +1082,7 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
 
         title_text=fig_obs.text(s='Convective Transition Basic Statistics ('+OBS+', '+RES+'$^{\circ}$)', x=0.5, y=1.02, ha='center', va='bottom', transform=fig_obs.transFigure, fontsize=16)
 
-        for reg in numpy.arange(NUMBER_OF_REGIONS):
+        for reg in np.arange(NUMBER_OF_REGIONS):
             # create figure 1
             ax1 = fig_obs.add_subplot(NUMBER_OF_REGIONS,4,1+reg*NUMBER_OF_REGIONS)
             ax1.set_xlim(fig_params['f1'][0])
@@ -1067,7 +1091,7 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
             ax1.set_yticks(fig_params['f1'][5])
             ax1.tick_params(labelsize=axes_fontsize)
             ax1.tick_params(axis="x", pad=10)
-            for Tidx in numpy.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
+            for Tidx in np.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
                 if t_reg_I_obs[reg,Tidx]:
                     if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
                         ax1.scatter(cwv_bin_center_obs,p1_obs[reg,:,Tidx],\
@@ -1079,7 +1103,7 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
                                     edgecolor="none",facecolor=scatter_colors[Tidx-TEMP_MIN_obs,:],\
                                     s=marker_size,clip_on=True,zorder=3,\
                                     label="{:.1f}".format(temp_bin_center_obs[Tidx]))
-            for Tidx in numpy.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
+            for Tidx in np.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
                 if t_reg_I_obs[reg,Tidx]:
                     if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
                         ax1.scatter(Q1_obs[reg,Tidx]/Q0_obs[reg,Tidx],fig_params['f1'][1][1]*0.98,\
@@ -1114,12 +1138,12 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
             ax2.set_yticks(fig_params['f2'][5])
             ax2.tick_params(labelsize=axes_fontsize)
             ax2.tick_params(axis="x", pad=xtick_pad)
-            for Tidx in numpy.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
+            for Tidx in np.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
                 if t_reg_I_obs[reg,Tidx]:
                     ax2.scatter(cwv_bin_center_obs,cp_obs[reg,:,Tidx],\
                                 edgecolor="none",facecolor=scatter_colors[Tidx-TEMP_MIN_obs,:],\
                                 s=marker_size,clip_on=True,zorder=3)
-            for Tidx in numpy.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
+            for Tidx in np.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
                 if t_reg_I_obs[reg,Tidx]:
                     if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
                         ax2.scatter(Q1_obs[reg,Tidx]/Q0_obs[reg,Tidx],fig_params['f2'][1][1]*0.98,\
@@ -1147,12 +1171,12 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
             ax3.set_xticks(fig_params['f3'][4])
             ax3.tick_params(labelsize=axes_fontsize)
             ax3.tick_params(axis="x", pad=xtick_pad)
-            for Tidx in numpy.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
+            for Tidx in np.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
                 if t_reg_I_obs[reg,Tidx]:
                     ax3.scatter(cwv_bin_center_obs,PDF_obs[reg,:,Tidx],\
                                 edgecolor="none",facecolor=scatter_colors[Tidx-TEMP_MIN_obs,:],\
                                 s=marker_size,clip_on=True,zorder=3)
-            for Tidx in numpy.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
+            for Tidx in np.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
                 if t_reg_I_obs[reg,Tidx]:
                     if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
                         ax3.scatter(Q1_obs[reg,Tidx]/Q0_obs[reg,Tidx],fig_params['f3'][1][1]*0.83,\
@@ -1177,12 +1201,12 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
             ax4.set_xticks(fig_params['f4'][4])
             ax4.tick_params(labelsize=axes_fontsize)
             ax4.tick_params(axis="x", pad=xtick_pad)
-            for Tidx in numpy.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
+            for Tidx in np.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
                 if t_reg_I_obs[reg,Tidx]:
                     ax4.scatter(cwv_bin_center_obs,pdf_pe_obs[reg,:,Tidx],\
                                 edgecolor="none",facecolor=scatter_colors[Tidx-TEMP_MIN_obs,:],\
                                 s=marker_size,clip_on=True,zorder=3)
-            for Tidx in numpy.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
+            for Tidx in np.arange(TEMP_MIN_obs,TEMP_MAX_obs+1):
                 if t_reg_I_obs[reg,Tidx]:
                     if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
                         ax4.scatter(Q1_obs[reg,Tidx]/Q0_obs[reg,Tidx],fig_params['f4'][1][1]*0.83,\
@@ -1225,19 +1249,19 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
     ### End of Process/Plot binned OBS data    
 
     # Post-binning Processing before Plotting
-    P0[P0==0.0]=numpy.nan
+    P0[P0==0.0]=np.nan
     P=P1/P0
     CP=PE/P0
-    PDF=numpy.zeros(P0.shape)
-    for reg in numpy.arange(P0.shape[0]):
-        PDF[reg,:,:]=P0[reg,:,:]/numpy.nansum(P0[reg,:,:])/CBW
+    PDF=np.zeros(P0.shape)
+    for reg in np.arange(P0.shape[0]):
+        PDF[reg,:,:]=P0[reg,:,:]/np.nansum(P0[reg,:,:])/CBW
     # Bins with PDF>PDF_THRESHOLD
-    pdf_gt_th=numpy.zeros(PDF.shape)
-    with numpy.errstate(invalid="ignore"):
+    pdf_gt_th=np.zeros(PDF.shape)
+    with np.errstate(invalid="ignore"):
         pdf_gt_th[PDF>PDF_THRESHOLD]=1
 
     # Indicator of (temp,reg) with wide CWV range
-    t_reg_I=(numpy.squeeze(numpy.sum(pdf_gt_th,axis=1))*CBW>CWV_RANGE_THRESHOLD)
+    t_reg_I=(np.squeeze(np.sum(pdf_gt_th,axis=1))*CBW>CWV_RANGE_THRESHOLD)
 
     ### Connected Component Section
     # The CWV_RANGE_THRESHOLD-Criterion must be satisfied by a connected component
@@ -1246,11 +1270,11 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
     #  But when models behave "funny" one may miss by turning on this section
     # For fitting procedure (finding critical CWV at which the precip picks up)
     #  Default: on
-#    for reg in numpy.arange(P0.shape[0]):
-#        for Tidx in numpy.arange(P0.shape[2]):
+#    for reg in np.arange(P0.shape[0]):
+#        for Tidx in np.arange(P0.shape[2]):
 #            if t_reg_I[reg,Tidx]:
 #                G=networkx.DiGraph()
-#                for cwv_idx in numpy.arange(pdf_gt_th.shape[1]-1):
+#                for cwv_idx in np.arange(pdf_gt_th.shape[1]-1):
 #                    if (pdf_gt_th[reg,cwv_idx,Tidx]>0 and pdf_gt_th[reg,cwv_idx+1,Tidx]>0):
 #                        G.add_path([cwv_idx,cwv_idx+1])
 #                largest = max(networkx.weakly_connected_component_subgraphs(G),key=len)
@@ -1265,36 +1289,36 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
     ### End of Connected Component Section    
 
     # Copy P1, CP into p1, cp for (temp,reg) with "wide CWV range" & "large PDF"
-    p1=numpy.zeros(P1.shape)
-    cp=numpy.zeros(CP.shape)
-    for reg in numpy.arange(P1.shape[0]):
-        for Tidx in numpy.arange(P1.shape[2]):
+    p1=np.zeros(P1.shape)
+    cp=np.zeros(CP.shape)
+    for reg in np.arange(P1.shape[0]):
+        for Tidx in np.arange(P1.shape[2]):
             if t_reg_I[reg,Tidx]:
-                p1[reg,:,Tidx]=numpy.copy(P[reg,:,Tidx])
-                cp[reg,:,Tidx]=numpy.copy(CP[reg,:,Tidx])
-    p1[pdf_gt_th==0]=numpy.nan
-    cp[pdf_gt_th==0]=numpy.nan
-    pdf=numpy.copy(PDF)
+                p1[reg,:,Tidx]=np.copy(P[reg,:,Tidx])
+                cp[reg,:,Tidx]=np.copy(CP[reg,:,Tidx])
+    p1[pdf_gt_th==0]=np.nan
+    cp[pdf_gt_th==0]=np.nan
+    pdf=np.copy(PDF)
 
-    for reg in numpy.arange(P1.shape[0]):
-        for Tidx in numpy.arange(P1.shape[2]):
+    for reg in np.arange(P1.shape[0]):
+        for Tidx in np.arange(P1.shape[2]):
             if (t_reg_I[reg,Tidx] and cp[reg,:,Tidx][cp[reg,:,Tidx]>=0.0].size>0):
-                if (numpy.max(cp[reg,:,Tidx][cp[reg,:,Tidx]>=0])<CP_THRESHOLD):
+                if (np.max(cp[reg,:,Tidx][cp[reg,:,Tidx]>=0])<CP_THRESHOLD):
                     t_reg_I[reg,Tidx]=False
             else:
                 t_reg_I[reg,Tidx]=False
                 
-    for reg in numpy.arange(P1.shape[0]):
-        for Tidx in numpy.arange(P1.shape[2]):
+    for reg in np.arange(P1.shape[0]):
+        for Tidx in np.arange(P1.shape[2]):
             if (~t_reg_I[reg,Tidx]):
-                p1[reg,:,Tidx]=numpy.nan
-                cp[reg,:,Tidx]=numpy.nan
-                pdf[reg,:,Tidx]=numpy.nan
+                p1[reg,:,Tidx]=np.nan
+                cp[reg,:,Tidx]=np.nan
+                pdf[reg,:,Tidx]=np.nan
     pdf_pe=pdf*cp
 
     # Temperature range for plotting
-    TEMP_MIN=numpy.where(numpy.sum(t_reg_I,axis=0)>=1)[0][0]
-    TEMP_MAX=numpy.where(numpy.sum(t_reg_I,axis=0)>=1)[0][-1]
+    TEMP_MIN=np.where(np.sum(t_reg_I,axis=0)>=1)[0][0]
+    TEMP_MAX=np.where(np.sum(t_reg_I,axis=0)>=1)[0][-1]
     # Use OBS to set colormap (but if they don't exist or users don't want to...)
     if (P0_obs==[] or USE_SAME_COLOR_MAP==False): 
         TEMP_MIN_obs=TEMP_MIN
@@ -1304,7 +1328,7 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
     # =====================Start Plot MODEL Binned Data=====================
     # ======================================================================
     NoC=TEMP_MAX_obs-TEMP_MIN_obs+1 # Number of Colors
-    scatter_colors = cm.jet(numpy.linspace(0,1,NoC,endpoint=True))
+    scatter_colors = cm.jet(np.linspace(0,1,NoC,endpoint=True))
 
     axes_fontsize,legend_fonsize,marker_size,xtick_pad,figsize1,figsize2 = fig_params['f0'] 
 
@@ -1315,7 +1339,7 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
 
     title_text=fig.text(s='Convective Transition Basic Statistics ('+MODEL+')', x=0.5, y=1.02, ha='center', va='bottom', transform=fig.transFigure, fontsize=16)
 
-    for reg in numpy.arange(NUMBER_OF_REGIONS):
+    for reg in np.arange(NUMBER_OF_REGIONS):
         # create figure 1
         ax1 = fig.add_subplot(NUMBER_OF_REGIONS,4,1+reg*NUMBER_OF_REGIONS)
         ax1.set_xlim(fig_params['f1'][0])
@@ -1324,7 +1348,7 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
         ax1.set_yticks(fig_params['f1'][5])
         ax1.tick_params(labelsize=axes_fontsize)
         ax1.tick_params(axis="x", pad=10)
-        for Tidx in numpy.arange(TEMP_MIN,TEMP_MAX+1):
+        for Tidx in np.arange(TEMP_MIN,TEMP_MAX+1):
             if t_reg_I[reg,Tidx]:
                 if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
                     ax1.scatter(cwv_bin_center,p1[reg,:,Tidx],\
@@ -1336,7 +1360,7 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
                                 edgecolor="none",facecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:],\
                                 s=marker_size,clip_on=True,zorder=3,\
                                 label="{:.1f}".format(temp_bin_center[Tidx]))
-        for Tidx in numpy.arange(min(TEMP_MIN_obs,TEMP_MIN),max(TEMP_MAX_obs+1,TEMP_MAX+1)):
+        for Tidx in np.arange(min(TEMP_MIN_obs,TEMP_MIN),max(TEMP_MAX_obs+1,TEMP_MAX+1)):
             if (OVERLAY_OBS_ON_TOP_OF_MODEL_FIG and \
                 P0_obs!=[] and t_reg_I_obs[reg,Tidx]):
                 ax1.scatter(cwv_bin_center_obs,p1_obs[reg,:,Tidx],\
@@ -1344,7 +1368,7 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
                             facecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:],\
                             s=marker_size/5,clip_on=True,zorder=3,\
                             label='Statistics for '+OBS+' (spatial resolution: '+RES+'$^{\circ}$)')
-        for Tidx in numpy.arange(TEMP_MIN,TEMP_MAX+1):
+        for Tidx in np.arange(TEMP_MIN,TEMP_MAX+1):
             if t_reg_I[reg,Tidx]:
                 if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
                     ax1.scatter(Q1[reg,Tidx]/Q0[reg,Tidx],fig_params['f1'][1][1]*0.98,\
@@ -1379,19 +1403,19 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
         ax2.set_yticks(fig_params['f2'][5])
         ax2.tick_params(labelsize=axes_fontsize)
         ax2.tick_params(axis="x", pad=xtick_pad)
-        for Tidx in numpy.arange(TEMP_MIN,TEMP_MAX+1):
+        for Tidx in np.arange(TEMP_MIN,TEMP_MAX+1):
             if t_reg_I[reg,Tidx]:
                 ax2.scatter(cwv_bin_center,cp[reg,:,Tidx],\
                             edgecolor="none",facecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:],\
                             s=marker_size,clip_on=True,zorder=3)
-        for Tidx in numpy.arange(min(TEMP_MIN_obs,TEMP_MIN),max(TEMP_MAX_obs+1,TEMP_MAX+1)):
+        for Tidx in np.arange(min(TEMP_MIN_obs,TEMP_MIN),max(TEMP_MAX_obs+1,TEMP_MAX+1)):
             if (OVERLAY_OBS_ON_TOP_OF_MODEL_FIG and \
                 P0_obs!=[] and t_reg_I_obs[reg,Tidx]):
                 ax2.scatter(cwv_bin_center_obs,cp_obs[reg,:,Tidx],\
                             edgecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:]/2,\
                             facecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:],\
                             s=marker_size/5,clip_on=True,zorder=3)
-        for Tidx in numpy.arange(TEMP_MIN,TEMP_MAX+1):
+        for Tidx in np.arange(TEMP_MIN,TEMP_MAX+1):
             if t_reg_I[reg,Tidx]:
                 if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
                     ax2.scatter(Q1[reg,Tidx]/Q0[reg,Tidx],fig_params['f2'][1][1]*0.98,\
@@ -1421,19 +1445,19 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
         ax3.set_xticks(fig_params['f3'][4])
         ax3.tick_params(labelsize=axes_fontsize)
         ax3.tick_params(axis="x", pad=xtick_pad)
-        for Tidx in numpy.arange(TEMP_MIN,TEMP_MAX+1):
+        for Tidx in np.arange(TEMP_MIN,TEMP_MAX+1):
             if t_reg_I[reg,Tidx]:
                 ax3.scatter(cwv_bin_center,PDF[reg,:,Tidx],\
                             edgecolor="none",facecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:],\
                             s=marker_size,clip_on=True,zorder=3)
-        for Tidx in numpy.arange(min(TEMP_MIN_obs,TEMP_MIN),max(TEMP_MAX_obs+1,TEMP_MAX+1)):
+        for Tidx in np.arange(min(TEMP_MIN_obs,TEMP_MIN),max(TEMP_MAX_obs+1,TEMP_MAX+1)):
             if (OVERLAY_OBS_ON_TOP_OF_MODEL_FIG and \
                 P0_obs!=[] and t_reg_I_obs[reg,Tidx]):
                 ax3.scatter(cwv_bin_center_obs,PDF_obs[reg,:,Tidx],\
                             edgecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:]/2,\
                             facecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:],\
                             s=marker_size/5,clip_on=True,zorder=3)
-        for Tidx in numpy.arange(TEMP_MIN,TEMP_MAX+1):
+        for Tidx in np.arange(TEMP_MIN,TEMP_MAX+1):
             if t_reg_I[reg,Tidx]:
                 if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
                     ax3.scatter(Q1[reg,Tidx]/Q0[reg,Tidx],fig_params['f3'][1][1]*0.83,\
@@ -1458,19 +1482,19 @@ def convecTransBasic_plot(ret,argsv1,argsv2,*argsv3):
         ax4.set_xticks(fig_params['f4'][4])
         ax4.tick_params(labelsize=axes_fontsize)
         ax4.tick_params(axis="x", pad=xtick_pad)
-        for Tidx in numpy.arange(TEMP_MIN,TEMP_MAX+1):
+        for Tidx in np.arange(TEMP_MIN,TEMP_MAX+1):
             if t_reg_I[reg,Tidx]:
                 ax4.scatter(cwv_bin_center,pdf_pe[reg,:,Tidx],\
                             edgecolor="none",facecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:],\
                             s=marker_size,clip_on=True,zorder=3)
-        for Tidx in numpy.arange(min(TEMP_MIN_obs,TEMP_MIN),max(TEMP_MAX_obs+1,TEMP_MAX+1)):
+        for Tidx in np.arange(min(TEMP_MIN_obs,TEMP_MIN),max(TEMP_MAX_obs+1,TEMP_MAX+1)):
             if (OVERLAY_OBS_ON_TOP_OF_MODEL_FIG and \
                 P0_obs!=[] and t_reg_I_obs[reg,Tidx]):
                 ax4.scatter(cwv_bin_center_obs,pdf_pe_obs[reg,:,Tidx],\
                             edgecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:]/2,\
                             facecolor=scatter_colors[(Tidx-TEMP_MIN_obs)%NoC,:],\
                             s=marker_size/5,clip_on=True,zorder=3)
-        for Tidx in numpy.arange(TEMP_MIN,TEMP_MAX+1):
+        for Tidx in np.arange(TEMP_MIN,TEMP_MAX+1):
             if t_reg_I[reg,Tidx]:
                 if (BULK_TROPOSPHERIC_TEMPERATURE_MEASURE==1):
                     ax4.scatter(Q1[reg,Tidx]/Q0[reg,Tidx],fig_params['f4'][1][1]*0.83,\

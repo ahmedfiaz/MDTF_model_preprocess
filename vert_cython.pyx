@@ -413,20 +413,69 @@ cdef theta_e_calc (double press_hPa, double temp, double q):
 
 def compute_layer_thetae(np.ndarray[DTYPE_t, ndim=2] temp, np.ndarray[DTYPE_t, ndim=2] q,
 np.ndarray[DTYPE_t, ndim=2] lev, 
-np.ndarray[DTYPE_t, ndim=1] ind_pbl_top, np.ndarray[DTYPE1_t, ndim=1] ind_pmid,
-np.ndarray[DTYPE_t, ndim=2] qs):
+np.ndarray[DTYPE1_t, ndim=1] ind_pbl_top, np.ndarray[DTYPE1_t, ndim=1] ind_pmid,
+np.ndarray[DTYPE_t, ndim=1] thetae_bl, np.ndarray[DTYPE_t, ndim=1] thetae_lt,
+np.ndarray[DTYPE_t, ndim=1] thetae_sat_lt, np.ndarray[DTYPE_t, ndim=1] wb):
 
     cdef unsigned int vector_size, height_size
     cdef Py_ssize_t i,j
-    cdef double pres_hPa
-
+    cdef double pres_hPa, qs, thetae, thetae_sat, dp1, dp2
+    cdef double pbl_thickness, lt_thickness
+    
     ht_size = lev.shape[0]
     vector_size = lev.shape[1]
+    
 
     for j in range(vector_size):
-        for i in range(ht_size):
-            pres_hPa=lev/100 # convert to hPa
-            qs[i,j]= qs_calc(pres_hPa,temp[i,j])        
 
+        pbl_thickness=(lev[0,j]-lev[ind_pbl_top[j],j])
+        lt_thickness=(lev[ind_pbl_top[j]+1,j]-lev[ind_pmid[j],j])
+
+        if (lt_thickness>20000): 
+
+            wb[j]=(pbl_thickness/lt_thickness)*log((pbl_thickness+lt_thickness)/pbl_thickness)
+        
+            for i in range(ht_size):
+        
+                if (i<ind_pmid[j]):
+            
+                    pres_hPa=lev[i,j]/100 # convert to hPa
+                    qs= qs_calc(pres_hPa,temp[i,j])        
+                    thetae=theta_e_calc(pres_hPa, temp[i,j], q[i,j])
+
+                    dp1=lev[i,j]-lev[i+1,j]
+
+                    if(i<=ind_pbl_top[j]):
+                
+                        if(i==0):
+                            thetae_bl[j]+=thetae*dp1/2
+                        elif (i>0) & (i<ind_pbl_top[j]):
+                            dp2=lev[i-1,j]-lev[i,j]
+                            thetae_bl[j]+=thetae*(dp1+dp2)/2
+                        elif (i==ind_pbl_top[j]):
+                            dp2=lev[i-1,j]-lev[i,j]
+                            thetae_bl[j]+=thetae*(dp2)/2
+                        
+                    else:
+                        thetae_sat=theta_e_calc(pres_hPa, temp[i,j], qs)
+ 
+                        if(i==ind_pbl_top[j]+1):
+                            thetae_lt[j]+=thetae*dp1/2
+                            thetae_sat_lt[j]+=thetae_sat*dp1/2
+
+                        elif (i>ind_pbl_top[j]+1) & (i<ind_pmid[j]):
+                            dp2=lev[i-1,j]-lev[i,j]
+                            thetae_lt[j]+=thetae*(dp1+dp2)/2
+                            thetae_sat_lt[j]+=thetae_sat*(dp1+dp2)/2
+ 
+                        elif (i==ind_pmid[j]):
+                            dp2=lev[i-1,j]-lev[i,j]
+                            thetae_lt[j]+=thetae*(dp2)/2
+                            thetae_sat_lt[j]+=thetae_sat*(dp2)/2
+                        
+            
+            thetae_bl[j]=thetae_bl[j]/(pbl_thickness)
+            thetae_lt[j]=thetae_lt[j]/(lt_thickness)
+            thetae_sat_lt[j]=thetae_sat_lt[j]/(lt_thickness)
 
 
