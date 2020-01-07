@@ -138,7 +138,7 @@ p_lev_mid=500
 
 # Threshold value defining precipitating events [mm/hr]
 PRECIP_THRESHOLD=0.25
-
+PRECIP_FACTOR=1e3 ## Factor to convert precip. units to mm/r
 # ======================================================================
 # END USER SPECIFIED SECTION
 # ======================================================================
@@ -225,6 +225,8 @@ data["SUBSAT_RANGE_MIN"]=BINT_RANGE_MIN
 # data["dp"]=dp
 
 data["PRECIP_THRESHOLD"]=PRECIP_THRESHOLD
+data["PRECIP_FACTOR"]=PRECIP_FACTOR
+
 data["p_lev_mid"]=p_lev_mid
 
 # List binned data file (with filename corresponding to casename)
@@ -238,6 +240,7 @@ pr_list=sorted(glob.glob(MODEL_OUTPUT_DIR+PR_VAR+"/*"))
 prc_list=sorted(glob.glob(MODEL_OUTPUT_DIR+PRC_VAR+"/*"))
 ta_list=sorted(glob.glob(MODEL_OUTPUT_DIR+TA_VAR+"/*"))
 hus_list=sorted(glob.glob(MODEL_OUTPUT_DIR+HUS_VAR+"/*"))
+
 
 data["pr_list"] = pr_list
 data["prc_list"] = prc_list
@@ -254,22 +257,37 @@ data["BL_THETAE"]=BL_THETAE_VAR
 # data["ta_list"] = ta_list
 
 # Check for pre-processed tave & qsat_int data
+# print(PREPROCESSING_OUTPUT_DIR+THETAE_OUT)
+thetae_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+THETAE_OUT+'*'))
+pr_save_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+PR_VAR+"*"))
+prc_save_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+PRC_VAR+"*"))
 
-thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+THETAE_OUT))
 # lft_thetae_sat_list=sorted(glob.glob(MODEL_OUTPUT_DIR+LFT_THETAE_SAT_VAR))
 # bl_thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+BL_THETAE_VAR))
 
 data["thetae_list"]=thetae_list
-# data["lft_thetae_list"]=lft_thetae_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+lft_thetae_list))
-# data["lft_thetae_sat_list"]=lft_thetae_sat_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+lft_thetae_sat_list))
-# data["bl_thetae_list"]=bl_thetae_list#sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+bl_thetae_list))
+data["pr_save_list"]=pr_save_list
 
-if (len(data["thetae_list"])==0):
+if (len(data["thetae_list"])<len(data["ta_list"])): 
     data["PREPROCESS_THETAE"]=1
     data["SAVE_THETAE"]=1
 else:
     data["PREPROCESS_THETAE"]=0
     data["SAVE_THETAE"]=0
+    
+### Only for models where the precip. output has a 
+### different frequency than the theta_e output.
+
+if (len(data['pr_list'])!=len(data['ta_list'])):
+    data["MATCH_PRECIP_THETAE"]=1
+    if len(data['pr_save_list'])<len(data['ta_list']):
+        data["SAVE_PRECIP"]=1
+    else:
+        data["SAVE_PRECIP"]=0
+else:
+    data["MATCH_PRECIP_THETAE"]=0
+    data["SAVE_PRECIP_THETAE"]=0
+
 
 # Taking care of function arguments for binning
 data["args1"]=[ \
@@ -291,14 +309,11 @@ pr_list, \
 PR_VAR, \
 prc_list, \
 PRC_VAR, \
-data["PREPROCESS_THETAE"], \
 MODEL_OUTPUT_DIR, \
 THETAE_OUT,\
 data["thetae_list"], \
 LFT_THETAE_VAR, \
-# data["lft_thetae_sat_list"], \
 LFT_THETAE_SAT_VAR, \
-# data["bl_thetae_list"], \
 BL_THETAE_VAR, \
 ta_list, \
 TA_VAR, \
@@ -326,5 +341,56 @@ data["bin_output_list"],\
 LFT_THETAE_VAR,\
 LFT_THETAE_SAT_VAR,\
 BL_THETAE_VAR]
+
+data["args3"]=[ \
+BINT_BIN_WIDTH, \
+BINT_RANGE_MAX, \
+BINT_RANGE_MIN, \
+CAPE_RANGE_MIN, \
+CAPE_RANGE_MAX, \
+CAPE_BIN_WIDTH, \
+SUBSAT_RANGE_MIN, \
+SUBSAT_RANGE_MAX, \
+SUBSAT_BIN_WIDTH, \
+NUMBER_OF_REGIONS, \
+START_DATE,\
+END_DATE,\
+PARENT_DATE,\
+TIME_STEP,\
+pr_list, \
+PR_VAR, \
+prc_list, \
+PRC_VAR, \
+MODEL_OUTPUT_DIR, \
+THETAE_OUT,\
+data["thetae_list"], \
+LFT_THETAE_VAR, \
+# data["lft_thetae_sat_list"], \
+LFT_THETAE_SAT_VAR, \
+# data["bl_thetae_list"], \
+BL_THETAE_VAR, \
+ta_list, \
+TA_VAR, \
+hus_list, \
+HUS_VAR, \
+LEV_VAR, \
+PS_VAR, \
+A_VAR,\
+B_VAR,\
+MODEL_NAME, \
+p_lev_mid, \
+# dp, \
+time_idx_delta, \
+data["SAVE_THETAE"], \
+data["SAVE_PRECIP"], \
+PREPROCESSING_OUTPUT_DIR, \
+PRECIP_THRESHOLD, \
+PRECIP_FACTOR,\
+data["BIN_OUTPUT_DIR"], \
+data["BIN_OUTPUT_FILENAME"], \
+TIME_VAR, \
+LAT_VAR, \
+LON_VAR ]
+
 with open(os.getcwd()+'/'+'convecTransLev2_calc_parameters.json', "w") as outfile:
     json.dump(data, outfile)

@@ -330,6 +330,125 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
 
     
     
+def convecTransLev2_matchpcpta(ta_netcdf_filename, TA_VAR, pr_list, PR_VAR,\
+    prc_list, PRC_VAR, MODEL, time_idx_delta,\
+    START_DATE, END_DATE, PARENT_DATE, TIME_STEP, PRECIP_FACTOR, SAVE_PRECIP,\
+    PREPROCESSING_OUTPUT_DIR, TIME_VAR,LAT_VAR,LON_VAR):
+    
+    strt_dt=dt.datetime.strptime(str(START_DATE),"%Y%m%d%H")
+    end_dt=dt.datetime.strptime(str(END_DATE),"%Y%m%d%H")
+    pt_date=dt.datetime.strptime(str(PARENT_DATE),"%Y%m%d%H")
+
+    ### LOAD T & q ###
+
+    ta_netcdf=Dataset(ta_netcdf_filename,"r")
+    time=np.asarray(ta_netcdf.variables[TIME_VAR][:],dtype="float")
+    time_units=str([(j.units) for i,j in ta_netcdf.variables.items() if i=='time'][0])
+    ta_netcdf.close()
+    
+    pt_date=dt.datetime.strptime(str(PARENT_DATE),"%Y%m%d%H")
+    dates_pr=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]    
+
+    for i in pr_list:
+    
+        pr_netcdf=Dataset(i,"r")
+        time_pr=np.asarray(pr_netcdf.variables[TIME_VAR][:],dtype="float")
+        lat=np.asarray(pr_netcdf.variables[LAT_VAR][:],dtype="float")
+        lon=np.asarray(pr_netcdf.variables[LON_VAR][:],dtype="float")
+
+        ## Take latitudinal slice
+        ilatx=np.where(np.logical_and(lat>=-20.0,lat<=20.0))[0]
+        lat=lat[ilatx]
+
+        pr_var=np.asarray(pr_netcdf.variables[PR_VAR][:,ilatx,:],dtype="float")*PRECIP_FACTOR
+        pr_units=str([(j.units) for i,j in pr_netcdf.variables.items() if i==PR_VAR][0])
+#         print(pr_units)
+#         print(np.max(pr_var)*1e3,np.min(pr_var))
+#         exit()
+        ### Extract time of closest approach ###
+        ## Note that 0.0625 is the time duration in fraction of the day ###        
+        time_ind=([j for j,k in enumerate(time_pr) if abs((k-time)).min()<=0.0625])
+        ## Choosing time so that the 3hrly avg. precip. is centered 1.5 hrs after the
+        ## T,q measurement.
+        
+        time_ind=time_ind[1::2]
+        time_ind_new=np.zeros((max(len(time_ind),time.size)))
+        ### time_ind_new ensures that any mismatch is size is accounted for
+        ### for now it specifically targets the case where time.size-len(time_ind)=1 
+        ### We can easily generalize this case to time.size-len(time_ind)=n
+        
+        diff=time.size-len(time_ind)
+        
+        try:
+            assert len(time_ind)==len(time)
+            time_ind_new[:]=time_ind
+        except:
+            time_ind_new[:-diff]=time_ind
+            time_ind_new[-(diff+1):-1]=np.nan 
+               
+        time_ind_new_fin=(np.int_(time_ind_new[np.isfinite(time_ind_new)]))
+        time_ind_new_nan=np.isnan(np.int_(time_ind_new))
+    
+        ### Assuming that time is index 0
+        pr_var_temp=np.zeros((time_ind_new.size,pr_var.shape[1],pr_var.shape[2]))
+        
+        assert diff>=0
+        
+        if diff==0:
+            pr_var_temp[:,...]=pr_var[time_ind_new_fin,...]        
+        else:               
+            pr_var_temp[:-diff,...]=pr_var[time_ind_new_fin,...]
+            pr_var_temp[-(diff+1):-1,...]=np.nan
+    
+        pr_netcdf.close()
+        
+        if SAVE_PRECIP==1:
+
+    #         Create PREPROCESSING_OUTPUT_DIR
+            os.system("mkdir -p "+PREPROCESSING_OUTPUT_DIR)
+
+    #        Get necessary coordinates/variables for netCDF files
+
+            pr_filename=PREPROCESSING_OUTPUT_DIR+ta_netcdf_filename.split('/')[-1].replace(TA_VAR,PR_VAR)
+            
+            pr_output_netcdf=Dataset(pr_filename,"w",format="NETCDF4",zlib='True')
+            pr_output_netcdf.description="Precipitation extracted and matched to the nearest"\
+                                        +"thermodynamic variable"+MODEL
+            pr_output_netcdf.source="Convective Onset Statistics Diagnostic Package \
+            - as part of the NOAA Model Diagnostic Task Force (MDTF) effort"
+
+            lon_dim=pr_output_netcdf.createDimension(LON_VAR,len(lon))
+            lon_val=pr_output_netcdf.createVariable(LON_VAR,np.float64,(LON_VAR,))
+            lon_val.units="degree"
+            lon_val[:]=lon
+
+            lat_dim=pr_output_netcdf.createDimension(LAT_VAR,len(lat))
+            lat_val=pr_output_netcdf.createVariable(LAT_VAR,np.float64,(LAT_VAR,))
+            lat_val.units="degree_north"
+            lat_val[:]=lat
+
+            time_dim=pr_output_netcdf.createDimension(TIME_VAR,None)
+            time_val=pr_output_netcdf.createVariable(TIME_VAR,np.float64,(TIME_VAR,))
+            time_val.units=time_units
+            time_val[:]=time
+
+            pr_val=pr_output_netcdf.createVariable(PR_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
+            pr_val.units=pr_units
+            pr_val[:]=pr_var_temp
+#             prc_val=prc_output_netcdf.createVariable(PR_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
+#             prc_val.units="mm/hr"
+#             prc_val[:]=prc_var_temp
+
+            pr_output_netcdf.close()
+
+            print('      '+pr_filename+" saved!")
+
+        
+        
+        print(' Precip time series matched to thermo time series')
+        
+        
+    
 
 # ======================================================================
 # convecTransBasic_calc_model
@@ -337,7 +456,7 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
 #  calculates the binned data, and save it as a netCDF file
 #  in the var_data/convective_transition_diag directory
 
-def convecTransLev2_calc_model(*argsv):
+def convecTransLev2_preprocess(*argsv):
     # ALLOCATE VARIABLES FOR EACH ARGUMENT
             
     BINT_BIN_WIDTH,\
@@ -358,7 +477,6 @@ def convecTransLev2_calc_model(*argsv):
     PR_VAR,\
     prc_list,\
     PRC_VAR,\
-    PREPROCESS_THETAE,\
     MODEL_OUTPUT_DIR,\
     THETAE_OUT,\
     thetae_list,\
@@ -385,17 +503,133 @@ def convecTransLev2_calc_model(*argsv):
     LAT_VAR,\
     LON_VAR=argsv[0]
     
-
-    # Pre-process temperature field if necessary
-    if PREPROCESS_THETAE==1:
-        print("   Start pre-processing atmospheric temperature & moisture fields...")
-        for li in np.arange(len(pr_list)):
-            convecTransLev2_calcthetae_ML(ta_list[li], TA_VAR, hus_list[li], HUS_VAR,\
-                                LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL, p_lev_mid, time_idx_delta,\
-                                START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
-                                SAVE_THETAE,PREPROCESSING_OUTPUT_DIR,THETAE_OUT,\
-                                LFT_THETAE_VAR,LFT_THETAE_SAT_VAR,BL_THETAE_VAR,\
-                                TIME_VAR,LAT_VAR,LON_VAR)
+    print("   Start pre-processing atmospheric temperature & moisture fields...")
+    for li in np.arange(len(ta_list)):
+        convecTransLev2_calcthetae_ML(ta_list[li], TA_VAR, hus_list[li], HUS_VAR,\
+                            LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL, p_lev_mid, time_idx_delta,\
+                            START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
+                            SAVE_THETAE, PREPROCESSING_OUTPUT_DIR,THETAE_OUT,\
+                            LFT_THETAE_VAR,LFT_THETAE_SAT_VAR,BL_THETAE_VAR,\
+                            TIME_VAR,LAT_VAR,LON_VAR)
+    
+                                
+                                
+def convecTransLev2_extractprecip(*argsv):
+    # ALLOCATE VARIABLES FOR EACH ARGUMENT
+            
+    BINT_BIN_WIDTH,\
+    BINT_RANGE_MAX,\
+    BINT_RANGE_MIN,\
+    CAPE_RANGE_MIN,\
+    CAPE_RANGE_MAX,\
+    CAPE_BIN_WIDTH,\
+    SUBSAT_RANGE_MIN,\
+    SUBSAT_RANGE_MAX,\
+    SUBSAT_BIN_WIDTH,\
+    NUMBER_OF_REGIONS,\
+    START_DATE,\
+    END_DATE,\
+    PARENT_DATE,\
+    TIME_STEP,\
+    pr_list,\
+    PR_VAR,\
+    prc_list,\
+    PRC_VAR,\
+    MODEL_OUTPUT_DIR,\
+    THETAE_OUT,\
+    thetae_list,\
+    LFT_THETAE_VAR,\
+    LFT_THETAE_SAT_VAR,\
+    BL_THETAE_VAR,\
+    ta_list,\
+    TA_VAR,\
+    hus_list,\
+    HUS_VAR,\
+    LEV_VAR,\
+    PS_VAR,\
+    A_VAR,\
+    B_VAR,\
+    MODEL,\
+    p_lev_mid,\
+    time_idx_delta,\
+    SAVE_THETAE,\
+    SAVE_PRECIP,\
+    PREPROCESSING_OUTPUT_DIR,\
+    PRECIP_THRESHOLD,\
+    PRECIP_FACTOR,\
+    BIN_OUTPUT_DIR,\
+    BIN_OUTPUT_FILENAME,\
+    TIME_VAR,\
+    LAT_VAR,\
+    LON_VAR=argsv[0]
+    
+    print("   Start pre-processing atmospheric temperature & moisture fields...")
+    for li in np.arange(len(ta_list)):
+        convecTransLev2_matchpcpta(ta_list[li], TA_VAR, pr_list, PR_VAR,\
+        prc_list, PRC_VAR, MODEL, time_idx_delta,\
+        START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
+        PRECIP_FACTOR, SAVE_PRECIP, PREPROCESSING_OUTPUT_DIR, TIME_VAR, LAT_VAR,LON_VAR)
+              
+    exit()
+                  
+                                
+def convecTransLev2_bin(*argsv):
+    # ALLOCATE VARIABLES FOR EACH ARGUMENT
+            
+    BINT_BIN_WIDTH,\
+    BINT_RANGE_MAX,\
+    BINT_RANGE_MIN,\
+    CAPE_RANGE_MIN,\
+    CAPE_RANGE_MAX,\
+    CAPE_BIN_WIDTH,\
+    SUBSAT_RANGE_MIN,\
+    SUBSAT_RANGE_MAX,\
+    SUBSAT_BIN_WIDTH,\
+    NUMBER_OF_REGIONS,\
+    START_DATE,\
+    END_DATE,\
+    PARENT_DATE,\
+    TIME_STEP,\
+    pr_list,\
+    PR_VAR,\
+    prc_list,\
+    PRC_VAR,\
+    MODEL_OUTPUT_DIR,\
+    THETAE_OUT,\
+    thetae_list,\
+    LFT_THETAE_VAR,\
+    LFT_THETAE_SAT_VAR,\
+    BL_THETAE_VAR,\
+    ta_list,\
+    TA_VAR,\
+    hus_list,\
+    HUS_VAR,\
+    LEV_VAR,\
+    PS_VAR,\
+    A_VAR,\
+    B_VAR,\
+    MODEL,\
+    p_lev_mid,\
+    time_idx_delta,\
+    SAVE_THETAE,\
+    PREPROCESSING_OUTPUT_DIR,\
+    PRECIP_THRESHOLD,\
+    BIN_OUTPUT_DIR,\
+    BIN_OUTPUT_FILENAME,\
+    TIME_VAR,\
+    LAT_VAR,\
+    LON_VAR=argsv[0]
+    
+    print("   Start pre-processing atmospheric temperature & moisture fields...")
+    for li in np.arange(len(ta_list)):
+        convecTransLev2_calcthetae_ML(ta_list[li], TA_VAR, hus_list[li], HUS_VAR,\
+                            LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL, p_lev_mid, time_idx_delta,\
+                            START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
+                            SAVE_THETAE,PREPROCESSING_OUTPUT_DIR,THETAE_OUT,\
+                            LFT_THETAE_VAR,LFT_THETAE_SAT_VAR,BL_THETAE_VAR,\
+                            TIME_VAR,LAT_VAR,LON_VAR)
+                                
+                            
         # Re-load file lists for tave & qsat_int
 #         tave_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+"/"+os.environ["tave_file"]))
 #         qsat_int_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+"/"+os.environ["qsat_int_file"]))

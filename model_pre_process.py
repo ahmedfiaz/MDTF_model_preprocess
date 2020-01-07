@@ -31,9 +31,8 @@ t0=tt.time()
 
 # Import Python functions specific to Convective Transition Basic Statistics
 from convecTransBasic_util import generate_region_mask
-from convecTransBasic_util import convecTransBasic_calc_model
-from convecTransBasic_util import convecTransLev2_calc_model
-# from convecTransBasic_util import convecTransBasic_loadAnalyzedData
+from convecTransBasic_util import convecTransLev2_preprocess
+from convecTransBasic_util import convecTransLev2_extractprecip
 # from convecTransBasic_util import convecTransBasic_plot
 print("**************************************************")
 print("Executing Convective Transition Level 2 Statistics (convecTransLev2.py)......")
@@ -62,6 +61,25 @@ if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
 
     if bin_data["PREPROCESS_THETAE"]==1:
         print("   THETA_E-BASED pre-processing required")
+        print(len(bin_data["args1"]))
+        convecTransLev2_preprocess(bin_data["args1"])
+
+    ### Only for CMIP6 models with different output formats between precip
+    ### and thetae-based variables ###
+      
+      
+    if (bin_data["MATCH_PRECIP_THETAE"]==1 and bin_data["SAVE_PRECIP"]==1) :
+        print("     Precip-thetae matching and saving required")
+        convecTransLev2_extractprecip(bin_data["args3"])
+    
+    else:
+        print("    Pre-processed data available...")
+        print("     Now binning...")
+
+
+
+
+
 #     if bin_data["SAVE_TAVE_QSAT_INT"]==1:
 #         print("      Pre-processed temperature fields ("\
 #             +os.environ["tave_var"]+" & "+os.environ["qsat_int_var"]\
@@ -72,10 +90,9 @@ if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
 
     # Pre-process temperature (if necessary) & bin & save binned results
 #     binned_output=convecTransBasic_calc_model(REGION,bin_data["args1"])
-        binned_output=convecTransLev2_calc_model(bin_data["args1"])
 
 else: # Binned data file exists & BIN_ANYWAY=False
-    print("Binned output detected..."),
+    print("Binned output detected...")
 #     binned_output=convecTransBasic_loadAnalyzedData(bin_data["args2"])
 #     print("...Loaded!")
 
