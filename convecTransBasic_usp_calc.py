@@ -97,7 +97,7 @@ BIN_OUTPUT_FILENAME=MODEL_NAME+".convecTransLev2"
 
 # ======================================================================
 # Re-do binning even if binned data file detected (default: True)
-BIN_ANYWAY=True
+BIN_ANYWAY=False
 
 # ======================================================================
 # Column Water Vapor (CWV in mm) range & bin-width

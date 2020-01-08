@@ -33,6 +33,9 @@ t0=tt.time()
 from convecTransBasic_util import generate_region_mask
 from convecTransBasic_util import convecTransLev2_preprocess
 from convecTransBasic_util import convecTransLev2_extractprecip
+from convecTransBasic_util import convecTransLev2_bin
+from convecTransBasic_util import convecTransLev2_loadAnalyzedData
+
 # from convecTransBasic_util import convecTransBasic_plot
 print("**************************************************")
 print("Executing Convective Transition Level 2 Statistics (convecTransLev2.py)......")
@@ -68,7 +71,7 @@ if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
     ### and thetae-based variables ###
       
       
-    if (bin_data["MATCH_PRECIP_THETAE"]==1 and bin_data["SAVE_PRECIP"]==1) :
+    elif (bin_data["SAVE_PRECIP"]==1) :
         print("     Precip-thetae matching and saving required")
         convecTransLev2_extractprecip(bin_data["args3"])
     
@@ -77,23 +80,23 @@ if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
         print("     Now binning...")
 
 
-
-
-
 #     if bin_data["SAVE_TAVE_QSAT_INT"]==1:
 #         print("      Pre-processed temperature fields ("\
 #             +os.environ["tave_var"]+" & "+os.environ["qsat_int_var"]\
 #             +") will be saved to "+bin_data["PREPROCESSING_OUTPUT_DIR"]+"/")
+
 
     # Load & pre-process region mask
 #     REGION=generate_region_mask(bin_data["REGION_MASK_DIR"]+"/"+bin_data["REGION_MASK_FILENAME"], bin_data["pr_list"][0],bin_data["LAT_VAR"],bin_data["LON_VAR"])
 
     # Pre-process temperature (if necessary) & bin & save binned results
 #     binned_output=convecTransBasic_calc_model(REGION,bin_data["args1"])
+    binned_output=convecTransLev2_bin(bin_data['args1'])
 
 else: # Binned data file exists & BIN_ANYWAY=False
-    print("Binned output detected...")
-#     binned_output=convecTransBasic_loadAnalyzedData(bin_data["args2"])
+    print("Binned output detected...")    
+    binned_output=convecTransLev2_loadAnalyzedData(bin_data["args2"])
+#     binned_output=convecTransLev2_bin(bin_data['args2'])
 #     print("...Loaded!")
 
 t1=tt.time()
