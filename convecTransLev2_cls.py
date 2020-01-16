@@ -28,21 +28,6 @@ import time as tt
 
 t0=tt.time()
 
-### SET PATH NAMES ###
-### Note: path names in the actual package are set elsewhere ###
-import argparse, os, util
-parser = argparse.ArgumentParser()
-cwd = os.path.dirname(os.path.realpath(__file__)) # gets dir of currently executing script
-parser.add_argument('config_file', nargs='?', type=str, 
-                    default=os.path.join(cwd, 'config.yml'),
-                    help="Configuration file.")
-args = parser.parse_args()
-config = util.read_yaml(args.config_file)
-os.environ["OBS_DATA"] = config['paths']['OBS_DATA_ROOT']
-os.environ['POD_HOME']= cwd
-os.environ['WK_DIR']= cwd
-#########################
-
 
 # Import Python functions specific to Convective Transition Basic Statistics
 from convecTransLev2_util import generate_region_mask
@@ -66,11 +51,6 @@ with open(os.getcwd()+"/"+"convecTransLev2_calc_parameters.json") as outfile:
     bin_data=json.load(outfile)
 print("...Loaded!")
 
-print("Load user-specified plotting parameters..."),
-os.system("python "+os.environ["POD_HOME"]+"/"+"convecTransLev2_usp_plot.py")
-with open(os.environ["WK_DIR"]+"/"+"convecTransLev2_plot_parameters.json") as outfile:
-    plot_data=json.load(outfile)
-print("...Loaded!")
 
 # ======================================================================
 # Binned data, i.e., convective transition statistics binned in specified intervals of 
@@ -114,7 +94,7 @@ else: # Binned data file exists & BIN_ANYWAY=False
 
 
 # Plot binning results & save the figure in wkdir/MDTF_casename/.../
-convecTransLev2_plot(binned_output,plot_data["plot_params"],plot_data["args3"],plot_data["args4"])
+# convecTransLev2_plot(binned_output,plot_data["plot_params"],plot_data["args3"],plot_data["args4"])
 print("**************************************************")
 print("Convective Transition Basic Statistics (convecTransLev2.py) Executed!")
 

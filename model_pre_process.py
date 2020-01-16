@@ -35,6 +35,7 @@ from convecTransBasic_util import convecTransLev2_preprocess
 from convecTransBasic_util import convecTransLev2_extractprecip
 from convecTransBasic_util import convecTransLev2_bin
 from convecTransBasic_util import convecTransLev2_loadAnalyzedData
+from convecTransBasic_util import convecTransLev2_plot
 
 # from convecTransBasic_util import convecTransBasic_plot
 print("**************************************************")
@@ -80,24 +81,22 @@ if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
         print("     Now binning...")
 
 
-#     if bin_data["SAVE_TAVE_QSAT_INT"]==1:
-#         print("      Pre-processed temperature fields ("\
-#             +os.environ["tave_var"]+" & "+os.environ["qsat_int_var"]\
-#             +") will be saved to "+bin_data["PREPROCESSING_OUTPUT_DIR"]+"/")
-
-
     # Load & pre-process region mask
-#     REGION=generate_region_mask(bin_data["REGION_MASK_DIR"]+"/"+bin_data["REGION_MASK_FILENAME"], bin_data["pr_list"][0],bin_data["LAT_VAR"],bin_data["LON_VAR"])
+    REGION=generate_region_mask(bin_data["REGION_MASK_DIR"]+"/"+bin_data["REGION_MASK_FILENAME"], 
+    bin_data["pr_list"][0],bin_data["LAT_VAR"],bin_data["LON_VAR"])
 
     # Pre-process temperature (if necessary) & bin & save binned results
-#     binned_output=convecTransBasic_calc_model(REGION,bin_data["args1"])
-    binned_output=convecTransLev2_bin(bin_data['args1'])
+    binned_output=convecTransLev2_bin(REGION, bin_data['args1'])
 
 else: # Binned data file exists & BIN_ANYWAY=False
     print("Binned output detected...")    
     binned_output=convecTransLev2_loadAnalyzedData(bin_data["args2"])
-#     binned_output=convecTransLev2_bin(bin_data['args2'])
-#     print("...Loaded!")
+
+
+# Plot binning results & save the figure in wkdir/MDTF_casename/.../
+convecTransBasic_plot(binned_output,plot_data["plot_params"],plot_data["args3"],plot_data["args4"])
+print("**************************************************")
+print("Convective Transition Basic Statistics (convecTransBasic.py) Executed!")
 
 t1=tt.time()
 
