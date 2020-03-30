@@ -1,7 +1,7 @@
 # This file is part of the convective_transition_diag module of the MDTF code package (see mdtf/MDTF_v2.0/LICENSE.txt)
 
 # ======================================================================
-# convecTransBasic_usp_calc.py
+# convecTransLev2_usp_calc.py
 #
 #   Called by convecTransBasic.py
 #    Provides User-Specified Parameters for Binning and Plotting
@@ -17,24 +17,26 @@ import glob
 # START USER SPECIFIED SECTION
 # ======================================================================
 # Model name
-MODEL_NAME='NASA-GISS'
-START_DATE=2013010106 ## TIME FORMAT: YYYYMMDDHH
-END_DATE=2014123118 
-PARENT_DATE=1850010100
+MODEL_NAME='SPCAM_minus4K'
+# MODEL_PREFIX='AndKua_aqua_SPCAM3.0_sp_fbp_f4.cam2.h1.'
+MODEL_PREFIX='sp8fbp_minus4k.cam2.h2.'
+START_DATE='0001010100' ##TIME FORMAT: YYYYMMDDHH
+END_DATE='0001013123' 
+PARENT_DATE='0001010100'
 TIME_STEP='days'
 # MODEL=os.environ["CASENAME"]#os.environ["model"] # will show up in the figure
 # Model output directory
-MODEL_OUTPUT_DIR='/scratch/neelin/CMIP6/'+MODEL_NAME+'/' # where original model data are located
+MODEL_OUTPUT_DIR='/pylon5/at5phhp/fiaz/'+MODEL_NAME+'/' # where original model data are located
 # MODEL_OUTPUT_DIR=os.environ["MODEL_OUTPUT_DIR"] # where original model data are located
 # Variable Names
-PR_VAR="pr"
-PRC_VAR="prc"
-TA_VAR="ta"
-HUS_VAR="hus"
+PR_VAR="PRECT"
+PRC_VAR="PRECSC"
+TA_VAR="TAP"
+HUS_VAR="QAP"
 LEV_VAR="lev"
-PS_VAR="ps"
-A_VAR="a"
-B_VAR="b"
+PS_VAR="PS"
+A_VAR="hyam"
+B_VAR="hybm"
 TIME_VAR="time"
 LAT_VAR="lat"
 LON_VAR="lon"
@@ -46,6 +48,7 @@ LON_VAR="lon"
 
 # ======================================================================
 # Region mask directory & filename
+# We don't require a regional mask for the aquaplanet
 
 REGION_MASK_DIR="/home/fiaz/MDTF/files/"
 REGION_MASK_FILENAME="region_0.25x0.25_costal2.5degExcluded.mat"
@@ -67,10 +70,10 @@ time_idx_delta=1000
 #  & data["qsat_int_list"] below by replacing MODEL_OUTPUT_DIR with
 #  PREPROCESSING_OUTPUT_DIR
 
-PREPROCESSING_OUTPUT_DIR="/scratch/neelin/layer_thetae/CMIP6/"+MODEL_NAME+"/" 
+# PREPROCESSING_OUTPUT_DIR="/pylon5/at5phhp/fiaz/model_output/SPCAM/PRE_PROCESSED/"
+PREPROCESSING_OUTPUT_DIR="/pylon5/at5phhp/fiaz/model_output/SPCAM_4K/PRE_PROCESSED/"
 
 THETAE_OUT="layer_thetae_var"
-
 LFT_THETAE_VAR="thetae_lt"
 LFT_THETAE_SAT_VAR="thetae_sat_lt"
 BL_THETAE_VAR="thetae_bl"
@@ -89,7 +92,7 @@ BL_THETAE_VAR="thetae_bl"
 # ======================================================================
 # Directory & Filename for saving binned results (netCDF4)
 #  tave or qsat_int will be appended to BIN_OUTPUT_FILENAME
-BIN_OUTPUT_DIR="/home/fiaz/MDTF/"
+BIN_OUTPUT_DIR="/home/fiaz/SPCAM-CBRAIN/BINNED_OUTPUT/"
 BIN_OUTPUT_FILENAME=MODEL_NAME+".convecTransLev2"
 
 # BIN_OUTPUT_DIR=os.environ["WK_DIR"]+"/model/netCDF"
@@ -97,7 +100,7 @@ BIN_OUTPUT_FILENAME=MODEL_NAME+".convecTransLev2"
 
 # ======================================================================
 # Re-do binning even if binned data file detected (default: True)
-BIN_ANYWAY=False
+BIN_ANYWAY=True
 
 # ======================================================================
 # Column Water Vapor (CWV in mm) range & bin-width
@@ -109,12 +112,20 @@ BINT_RANGE_MIN=-1.5 # default=90 (75 for satellite retrieval product)
 
 # Bin width and intervals for CAPE and SUBSAT.
 # In units of K
+# Note: this range differs across models, so must be adjusted accordingly
 
-CAPE_RANGE_MIN=-40.0
-CAPE_RANGE_MAX=17.0
+### ERA-I range
+# CAPE_RANGE_MIN=-40.0
+# CAPE_RANGE_MAX=17.0
+# CAPE_BIN_WIDTH=1.0
+
+### SP-CAM range
+CAPE_RANGE_MIN=25.0
+CAPE_RANGE_MAX=68.0
 CAPE_BIN_WIDTH=1.0
 
-SUBSAT_RANGE_MIN=0.0
+# SUBSAT_RANGE_MIN=0.0
+SUBSAT_RANGE_MIN=-1.0
 SUBSAT_RANGE_MAX=42.0
 SUBSAT_BIN_WIDTH=1.0
 
@@ -236,11 +247,15 @@ data["bin_output_list"]=sorted(glob.glob(data["BIN_OUTPUT_DIR"]+"/"+data["BIN_OU
 # Assumes that the corresponding files in each list
 #  have the same spatial/temporal coverage/resolution
 
-pr_list=sorted(glob.glob(MODEL_OUTPUT_DIR+PR_VAR+"/*"))
-prc_list=sorted(glob.glob(MODEL_OUTPUT_DIR+PRC_VAR+"/*"))
-ta_list=sorted(glob.glob(MODEL_OUTPUT_DIR+TA_VAR+"/*"))
-hus_list=sorted(glob.glob(MODEL_OUTPUT_DIR+HUS_VAR+"/*"))
+# pr_list=sorted(glob.glob(MODEL_OUTPUT_DIR+PR_VAR+"/*"))
+# prc_list=sorted(glob.glob(MODEL_OUTPUT_DIR+PRC_VAR+"/*"))
+# ta_list=sorted(glob.glob(MODEL_OUTPUT_DIR+TA_VAR+"/*"))
+# hus_list=sorted(glob.glob(MODEL_OUTPUT_DIR+HUS_VAR+"/*"))
 
+pr_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/*.nc"))
+prc_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/*.nc"))
+ta_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/*.nc"))
+hus_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/*.nc"))
 
 data["pr_list"] = pr_list
 data["prc_list"] = prc_list
@@ -258,9 +273,12 @@ data["BL_THETAE"]=BL_THETAE_VAR
 
 # Check for pre-processed tave & qsat_int data
 # print(PREPROCESSING_OUTPUT_DIR+THETAE_OUT)
-thetae_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+THETAE_OUT+'*'))
-pr_save_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+PR_VAR+"*"))
-prc_save_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+PRC_VAR+"*"))
+thetae_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+'*'+THETAE_OUT+'*'))
+pr_save_list=pr_list
+prc_save_list=pr_list
+
+# pr_save_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+PR_VAR+"*"))
+# prc_save_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+PRC_VAR+"*"))
 
 # lft_thetae_sat_list=sorted(glob.glob(MODEL_OUTPUT_DIR+LFT_THETAE_SAT_VAR))
 # bl_thetae_list=sorted(glob.glob(MODEL_OUTPUT_DIR+BL_THETAE_VAR))
@@ -287,6 +305,7 @@ if (len(data['pr_list'])!=len(data['ta_list'])):
 else:
     data["MATCH_PRECIP_THETAE"]=0
     data["SAVE_PRECIP_THETAE"]=0
+    data["SAVE_PRECIP"]=0
 
 
 # Taking care of function arguments for binning

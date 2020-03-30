@@ -17,7 +17,7 @@ import datetime as dt
 from dateutil.relativedelta import relativedelta
 import time
 import itertools
-from mpi4py import MPI
+# from mpi4py import MPI
 from sys import exit, stdout
 from numpy import dtype
 from parameters import *
@@ -45,7 +45,7 @@ os.environ['WK_DIR']= cwd
 
 
 # Import Python functions specific to Convective Transition Basic Statistics
-from convecTransLev2_util import generate_region_mask
+# from convecTransLev2_util import generate_region_mask
 from convecTransLev2_util import convecTransLev2_preprocess
 from convecTransLev2_util import convecTransLev2_extractprecip
 from convecTransLev2_util import convecTransLev2_bin
@@ -66,11 +66,11 @@ with open(os.getcwd()+"/"+"convecTransLev2_calc_parameters.json") as outfile:
     bin_data=json.load(outfile)
 print("...Loaded!")
 
-print("Load user-specified plotting parameters..."),
-os.system("python "+os.environ["POD_HOME"]+"/"+"convecTransLev2_usp_plot.py")
-with open(os.environ["WK_DIR"]+"/"+"convecTransLev2_plot_parameters.json") as outfile:
-    plot_data=json.load(outfile)
-print("...Loaded!")
+# print("Load user-specified plotting parameters..."),
+# os.system("python "+os.environ["POD_HOME"]+"/"+"convecTransLev2_usp_plot.py")
+# with open(os.environ["WK_DIR"]+"/"+"convecTransLev2_plot_parameters.json") as outfile:
+#     plot_data=json.load(outfile)
+# print("...Loaded!")
 
 # ======================================================================
 # Binned data, i.e., convective transition statistics binned in specified intervals of 
@@ -79,18 +79,19 @@ print("...Loaded!")
 #  if so, skip binning; otherwise, bin data using model output
 #  (see convecTransBasic_usp_calc.py for where the model output locate)
 
+
 if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
 
-    print("Starting binning procedure...")
-
+    print("Starting binning procedure...")    
+    
     if bin_data["PREPROCESS_THETAE"]==1:
         print("   THETA_E-BASED pre-processing required")
         print(len(bin_data["args1"]))
         convecTransLev2_preprocess(bin_data["args1"])
+        
 
     ### Only for CMIP6 models with different output formats between precip
     ### and thetae-based variables ###
-      
       
     elif (bin_data["SAVE_PRECIP"]==1) :
         print("     Precip-thetae matching and saving required")
@@ -102,11 +103,13 @@ if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
 
 
     # Load & pre-process region mask
-    REGION=generate_region_mask(bin_data["REGION_MASK_DIR"]+"/"+bin_data["REGION_MASK_FILENAME"], 
-    bin_data["pr_list"][0],bin_data["LAT_VAR"],bin_data["LON_VAR"])
+#     REGION=generate_region_mask(bin_data["REGION_MASK_DIR"]+"/"+bin_data["REGION_MASK_FILENAME"], 
+#     bin_data["pr_list"][0],bin_data["LAT_VAR"],bin_data["LON_VAR"])
 
     # Pre-process temperature (if necessary) & bin & save binned results
-    binned_output=convecTransLev2_bin(REGION, bin_data['args1'])
+#     binned_output=convecTransLev2_bin(REGION, bin_data['args1'])
+    ## No need for regions since it is aquaplanet
+    binned_output=convecTransLev2_bin(bin_data['args1'])
 
 else: # Binned data file exists & BIN_ANYWAY=False
     print("Binned output detected...")    
