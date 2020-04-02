@@ -50,15 +50,17 @@ import matplotlib.rcsetup as rcsetup
 
 
 # ======================================================================
-# convecTransBasic_binTave
-#  takes arguments and bins by CWV & tave bins
+# convecTransLev2_binThetae
+#  takes arguments and bins by subsat+ cape & bint
 
-@jit(nopython=True)
+@jit(nopython=True) 
 def convecTransLev2_binThetae(lon_idx, REGION, NUMBER_CAPE_BIN, NUMBER_SUBSAT_BIN, 
- CAPE, SUBSAT, RAIN, p0, p1, p2):
+NUMBER_BINT_BIN, CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, q0, q1, q2):
+ 
     for lat_idx in np.arange(SUBSAT.shape[1]):
         subsat_idx=SUBSAT[:,lat_idx,lon_idx]
         cape_idx=CAPE[:,lat_idx,lon_idx]
+        bint_idx=BINT[:,lat_idx,lon_idx]
         rain=RAIN[:,lat_idx,lon_idx]
         reg=REGION[lon_idx,lat_idx]
         if reg>0:
@@ -68,6 +70,13 @@ def convecTransLev2_binThetae(lon_idx, REGION, NUMBER_CAPE_BIN, NUMBER_SUBSAT_BI
                     p0[subsat_idx[time_idx],cape_idx[time_idx]]+=1
                     p1[subsat_idx[time_idx],cape_idx[time_idx]]+=rain[time_idx]
                     p2[subsat_idx[time_idx],cape_idx[time_idx]]+=rain[time_idx]**2
+
+                if (bint_idx[time_idx]<NUMBER_BINT_BIN and bint_idx[time_idx]>=0):
+                    q0[bint_idx[time_idx]]+=1
+                    q1[bint_idx[time_idx]]+=rain[time_idx]
+                    q2[bint_idx[time_idx]]+=rain[time_idx]**2
+                
+                                
 #                 if (rain[time_idx]>PRECIP_THRESHOLD):
 #                     pe[subsat_idx[time_idx],cape_idx[time_idx]]+=1
 #                 if (subsat_idx[time_idx]+1>(0.6/SUBSAT_BIN_WIDTH)*qsat_int[time_idx]):
@@ -231,7 +240,7 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     b=np.asarray(ta_netcdf.variables[B_VAR][:],dtype="float")
     lat=np.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
     lon=np.asarray(ta_netcdf.variables[LON_VAR][:],dtype="float")
-
+    
     ## Take latitudinal slice
     ilatx=np.where(np.logical_and(lat>=-20.0,lat<=20.0))[0]
     lat=lat[ilatx]
@@ -241,7 +250,7 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     time_units=str([(j.units) for i,j in ta_netcdf.variables.items() if i=='time'][0])
     ps_units=str([(j.units) for i,j in ta_netcdf.variables.items() if i==PS_VAR][0])
     ta_netcdf.close()
-    
+        
     dates_ta=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]
     dates_ta_max,dates_ta_min=max(dates_ta),min(dates_ta)
     dates_indx=np.asarray([i for (i,idt) in enumerate(dates_ta) if (idt<dates_ta_max and idt>dates_ta_min)])
@@ -257,7 +266,7 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     assert(len(dates_ta)==len(dates_hus))
     
     ### CREATE PRESSURE LEVELS ###
-    pres=b[:,None,None,None]*ps[None,...]+a[:,None,None,None]
+    pres=b[None,:,None,None]*ps[:,None,...]+a[None,:,None,None]
 
     ### Define the layers ###    
     pbl_top=ps-100e2 ## The sub-cloud layer is 100 mb thick ##
@@ -266,48 +275,50 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
 
     pbl_top=np.float_(pbl_top.flatten())
     low_top=np.float_(low_top.flatten())
-    lev=pres.reshape(*pres.shape[:1],-1)
+
+    ### Snippet to find the closet pressure level to pbl_top and
+    ### the freezing level.
     
-    pbl_ind=np.zeros(pbl_top.size,dtype=np.int64)
-    low_ind=np.zeros(low_top.size,dtype=np.int64)
-
-    find_closest_index_2D(pbl_top,lev,pbl_ind)
-    find_closest_index_2D(low_top,lev,low_ind)
-
-    ##### Calculate qsat #####
-
-    Tk0 = 273.15 # Reference temperature.
-    Es0 = 610.7 # Vapor pressure at Tk0.
-    Lv0 = 2500800 # Latent heat of evaporation at Tk0.
-    cpv = 1869.4 # Isobaric specific heat capacity of water vapor at tk0.
-    cl = 4218.0 # Specific heat capacity of liquid water at tk0.
-    R = 8.3144 # Universal gas constant.
-    Mw = 0.018015 # Molecular weight of water.
-    Rv = R/Mw # Gas constant for water vapor.
-    Ma = 0.028964 # Molecular weight of dry air.
-    Rd = R/Ma # Gas constant for dry air.
-    epsilon = Mw/Ma 
-    g = 9.80665 
-    cpd=1004.
-    Po=1025e2
-    REF_THETAE=340.
-
-    ### Saturation specific humidity and mixing ratio ###
-    stdout.flush()
-
-    ### Swap pressure axes for following computation ###
-#     pres=np.swapaxes(pres,0,1)
+    ### Reshape arrays to 2D for more efficient search ###
+    
+    ### Check if pressure array is descending ###
+    ### since this is an implicit assumption
+    
+    if (np.all(np.diff(pres,axis=1)<0)):
+        print('     pressure levels strictly decreasing')
+    elif (np.all(np.diff(pres,axis=1)>0)):
+        print('     pressure levels strictly increasing')
+        print('     reversing the pressure dimension')
+        pres=pres[:,::-1,:,:]
+        ta=ta[:,::-1,:,:]
+        hus=hus[:,::-1,:,:]
+    else:
+        exit('     Check pressure level ordering. Exiting now..')
+    
+    
+    lev=np.swapaxes(pres,0,1)
+    lev=lev.reshape(*lev.shape[:1],-1)
+    
     ta_flat=np.swapaxes(ta,0,1)
     ta_flat=ta_flat.reshape(*ta_flat.shape[:1],-1)
 
     hus_flat=np.swapaxes(hus,0,1)
     hus_flat=hus_flat.reshape(*hus_flat.shape[:1],-1)
 
+    pbl_ind=np.zeros(pbl_top.size,dtype=np.int64)
+    low_ind=np.zeros(low_top.size,dtype=np.int64)
+
+    find_closest_index_2D(pbl_top,lev,pbl_ind)
+    find_closest_index_2D(low_top,lev,low_ind)
+    
+    stdout.flush()
+
+    
     thetae_bl=np.zeros_like(pbl_top)
     thetae_lt=np.zeros_like(pbl_top)
     thetae_sat_lt=np.zeros_like(pbl_top)
     wb=np.zeros_like(pbl_top)
-    
+
     ### Use trapezoidal rule for approximating the vertical integral ###
     ### vert. integ.=(b-a)*(f(a)+f(b))/2
     compute_layer_thetae(ta_flat, hus_flat, lev, pbl_ind, low_ind, thetae_bl, thetae_lt, thetae_sat_lt, wb)
@@ -320,7 +331,7 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     thetae_bl=thetae_bl.reshape(ps.shape)
     thetae_lt=thetae_lt.reshape(ps.shape)
     thetae_sat_lt=thetae_sat_lt.reshape(ps.shape)
-
+    
     print('      '+ta_netcdf_filename+" & "+hus_netcdf_filename+" pre-processed!")
 
 #     Save Pre-Processed tave & qsat_int Fields
@@ -365,7 +376,7 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
         thetalt_sat_val[:]=thetae_sat_lt
 
         ps_val=thetae_output_netcdf.createVariable(PS_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
-        ps_val.units="K"
+        ps_val.units=ps_units
         ps_val[:]=ps
 
         thetae_output_netcdf.close()
@@ -669,16 +680,22 @@ def convecTransLev2_bin(REGION, *argsv):
     # Define Bin Centers
     cape_bin_center=np.arange(CAPE_RANGE_MIN,CAPE_RANGE_MAX+CAPE_BIN_WIDTH,CAPE_BIN_WIDTH)
     subsat_bin_center=np.arange(SUBSAT_RANGE_MIN,SUBSAT_RANGE_MAX+SUBSAT_BIN_WIDTH,SUBSAT_BIN_WIDTH)
+    bint_bin_center=np.arange(BINT_RANGE_MIN,BINT_RANGE_MAX+BINT_BIN_WIDTH,BINT_BIN_WIDTH)
 
     NUMBER_CAPE_BIN=cape_bin_center.size
     NUMBER_SUBSAT_BIN=subsat_bin_center.size
+    NUMBER_BINT_BIN=bint_bin_center.size
     
     # Allocate Memory for Arrays
     P0=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
     P1=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
     P2=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
-    PE=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
-
+    
+    Q0=np.zeros((NUMBER_BINT_BIN))
+    Q1=np.zeros((NUMBER_BINT_BIN))
+    Q2=np.zeros((NUMBER_BINT_BIN))
+    
+    
     ### Internal constants ###
 
     ref_thetae=340 ## reference theta_e in K to convert buoy. to temp units
@@ -730,6 +747,9 @@ def convecTransLev2_bin(REGION, *argsv):
         CAPE=(cape-CAPE_RANGE_MIN)/CAPE_BIN_WIDTH-0.5
         CAPE=CAPE.astype(int)
 
+        BINT=(bint-BINT_RANGE_MIN)/(BINT_BIN_WIDTH)+0.5
+        BINT=BINT.astype(int)
+
         RAIN=pr        
         RAIN[RAIN<0]=0 # Sometimes models produce negative rain rates
         
@@ -740,15 +760,23 @@ def convecTransLev2_bin(REGION, *argsv):
             p0=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
             p1=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
             p2=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
-            pe=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
+            
+            q0=np.zeros((NUMBER_BINT_BIN))
+            q1=np.zeros((NUMBER_BINT_BIN))
+            q2=np.zeros((NUMBER_BINT_BIN))
             
             convecTransLev2_binThetae(lon_idx, REGION, NUMBER_CAPE_BIN, NUMBER_SUBSAT_BIN, 
-            CAPE, SUBSAT, RAIN, p0, p1, p2)
+            NUMBER_BINT_BIN, CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, q0, q1, q2)
 
             P0+=p0
             P1+=p1
             P2+=p2
-
+            
+            Q0+=q0
+            Q1+=q1
+            Q2+=q2
+            
+        
         print("...Complete for current files!")
 
     print("   Total binning complete!")
@@ -770,6 +798,12 @@ def convecTransLev2_bin(REGION, *argsv):
     cape.units="K"
     cape[:]=cape_bin_center
 
+    bint_dim=bin_output_netcdf.createDimension("bint",len(bint_bin_center))
+    bint_var=bin_output_netcdf.createVariable("bint",np.float64,("bint",))
+    bint_var.units="K"
+    bint_var[:]=bint_bin_center
+
+
     p0=bin_output_netcdf.createVariable("P0",np.float64,("subsat","cape"))
     print(p0.shape,P0.shape)
     p0[:,:]=P0
@@ -782,11 +816,24 @@ def convecTransLev2_bin(REGION, *argsv):
     p2.units="mm^2/hr^2"
     p2[:,:]=P2
     
+    
+    q0=bin_output_netcdf.createVariable("Q0",np.float64,("bint"))
+    q0[:]=Q0
+
+    q1=bin_output_netcdf.createVariable("Q1",np.float64,("bint"))
+    q1.units="mm/hr"
+    q1[:]=Q1
+
+    q2=bin_output_netcdf.createVariable("Q2",np.float64,("bint"))
+    q2.units="mm^2/hr^2"
+    q2[:]=Q2
+    
+    
     bin_output_netcdf.close()
 
     print("   Binned results saved as "+BIN_OUTPUT_DIR+BIN_OUTPUT_FILENAME+".nc!")
 
-    return subsat_bin_center,cape_bin_center,P0,P1,P2
+    return subsat_bin_center,cape_bin_center,bint_bin_center,P0,P1,P2,Q0,Q1,Q2
 
         
                 
@@ -825,33 +872,37 @@ def convecTransLev2_bin(REGION, *argsv):
                    
 def convecTransLev2_loadAnalyzedData(*argsv):
 
+    print('Here:',argsv)
+
     bin_output_list=argsv[0]
-    
     if (len(bin_output_list)!=0):
 
         bin_output_filename=bin_output_list[0][0]    
         if bin_output_filename.split('.')[-1]=='nc':
             bin_output_netcdf=Dataset(bin_output_filename,"r")
+            print(bin_output_netcdf)
 
             P0=np.asarray(bin_output_netcdf.variables["P0"][:,:],dtype="float")
             P1=np.asarray(bin_output_netcdf.variables["P1"][:,:],dtype="float")
             P2=np.asarray(bin_output_netcdf.variables["P2"][:,:],dtype="float")
+            Q0=np.asarray(bin_output_netcdf.variables["Q0"][:],dtype="float")
+            Q1=np.asarray(bin_output_netcdf.variables["Q1"][:],dtype="float")
+            Q2=np.asarray(bin_output_netcdf.variables["Q2"][:],dtype="float")
+
 #             PRECIP_THRESHOLD=bin_output_netcdf.getncattr("PRECIP_THRESHOLD")
 
             cape_bin_center=np.asarray(bin_output_netcdf.variables["cape"][:],dtype="float")
             subsat_bin_center=np.asarray(bin_output_netcdf.variables["subsat"][:],dtype="float")
-
-            print(cape_bin_center[-1],cape_bin_center[0],P0.shape)
-            print(subsat_bin_center[-1],subsat_bin_center[0],P1.shape)
+            bint_bin_center=np.asarray(bin_output_netcdf.variables["bint"][:],dtype="float")
 
             bin_output_netcdf.close()
             
         # Return CWV_BIN_WIDTH & PRECIP_THRESHOLD to make sure that
         #  user-specified parameters are consistent with existing data
-        return subsat_bin_center,cape_bin_center,P0,P1,P2
+        return subsat_bin_center,cape_bin_center,bint_bin_center,P0,P1,P2,Q0,Q1,Q2
 
     else: # If the binned model/obs data does not exist (in practive, for obs data only)   
-        return [],[],[],[],[]
+        return [],[],[],[],[],[],[],[],[]
 
 
 def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
@@ -867,9 +918,13 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     #  CBW:CWV_BIN_WIDTH, PT:PRECIP_THRESHOLD
     subsat_bin_center,\
     cape_bin_center,\
+    bint_bin_center,\
     P0,\
     P1,\
-    P2=ret
+    P2,\
+    Q0,\
+    Q1,\
+    Q2=ret
     
     # Load plotting parameters from convecTransBasic_usp_plot.py
     fig_params=argsv1
@@ -882,12 +937,14 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     NUMBER_THRESHOLD,\
     FIG_OUTPUT_DIR,\
     FIG_OUTPUT_FILENAME,\
+    FIG_EXTENSION,\
     OBS,\
     FIG_OBS_DIR,\
     FIG_OBS_FILENAME,\
     USE_SAME_COLOR_MAP,\
-    OVERLAY_OBS_ON_TOP_OF_MODEL_FIG=argsv3[0]
-#     
+    OVERLAY_OBS_ON_TOP_OF_MODEL_FIG,\
+    MODEL_NAME=argsv3[0]
+
 #     CWV_BIN_WIDTH,\
 #     PDF_THRESHOLD,\
 #     CWV_RANGE_THRESHOLD,\
@@ -910,12 +967,14 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     # Load binned OBS data (default: trmm3B42 + ERA-I)
     subsat_bin_center_obs,\
     cape_bin_center_obs,\
+    bint_bin_center_obs,\
     P0_obs,\
     P1_obs,\
-    P2_obs=convecTransLev2_loadAnalyzedData(argsv2)
+    P2_obs,\
+    Q0_obs,\
+    Q1_obs,\
+    Q2_obs=convecTransLev2_loadAnalyzedData(argsv2)
     
-    print('Here in plotting routine')
-
 
 #     Check whether the detected binned MODEL data is consistent with User-Specified Parameters
 #      (Not all parameters, just 3)
@@ -951,11 +1010,11 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
 #             pdf_gt_th_obs[PDF_obs>PDF_THRESHOLD]=1
 
     axes_fontsize,axes_elev,axes_azim,figsize1,figsize2 = fig_params['f0']
-    print("   Plotting OBS Figure..."),
+    print("   Plotting Surfaces..."),
     # create figure canvas
     
     fig = mp.figure(figsize=(figsize1,figsize2))
-    ax = fig.add_subplot(221, projection='3d')
+    ax = fig.add_subplot(121, projection='3d')
 #         ax = fig_obs.gca(projection='3d')
 
     X, Y = np.meshgrid(subsat_bin_center_obs,cape_bin_center_obs)
@@ -979,8 +1038,9 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     ax.set_ylabel(fig_params['f1'][4],fontsize=axes_fontsize)
     ax.set_zlabel(fig_params['f1'][5],fontsize=axes_fontsize)
     ax.view_init(elev=axes_elev, azim=axes_azim)
+    ax.set_title('TRMM 3B42 + ERA-I',fontsize=axes_fontsize)
 
-    ax1 = fig.add_subplot(222, projection='3d')
+    ax1 = fig.add_subplot(122, projection='3d')
     
     ax1.plot_surface(X,Y,P_obs.T,color='black',zorder=50,alpha=0.25,vmax=5.,vmin=0.)
 
@@ -1003,39 +1063,103 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     ax1.set_ylabel(fig_params['f1'][4],fontsize=axes_fontsize)
     ax1.set_zlabel(fig_params['f1'][5],fontsize=axes_fontsize)
     ax1.view_init(elev=axes_elev, azim=axes_azim)
+    ax1.set_title(MODEL_NAME,fontsize=axes_fontsize)
 
-    ax2 = fig.add_subplot(223)
+    
+    mp.tight_layout()
+    
+    mp.savefig(FIG_OBS_DIR+"/"+FIG_OUTPUT_FILENAME+'.pcp_surfaces'+'.'+FIG_EXTENSION, bbox_inches="tight")
+        
+    print("...Completed!")
+    print("      Surface plots saved as "+FIG_OBS_DIR+"/"+FIG_OUTPUT_FILENAME+'.pcp_surfaces'+'.'+FIG_EXTENSION+"!")
+
+        
+    fig = mp.figure(figsize=(figsize1,figsize2))
+
+    ax = fig.add_subplot(221)
 
     dx=abs(np.diff(subsat_bin_center)[0])
     dy=abs(np.diff(cape_bin_center)[0])
     pdf_obs=P0_obs/(np.nansum(P0_obs)*dx*dy)
 
-    ax2.contourf(subsat_bin_center,cape_bin_center,np.log10(pdf_obs).T)
-    ax2.set_xlabel('SUBSAT (K)',fontsize=13)
-    ax2.set_ylabel('CAPE (K)',fontsize=13)
+    ax.contourf(subsat_bin_center,cape_bin_center,np.log10(pdf_obs).T)
+    ax.set_xlabel('SUBSAT (K)',fontsize=axes_fontsize)
+    ax.set_ylabel('CAPE (K)',fontsize=axes_fontsize)
+    ax.set_title('TRMM 3B42 + ERA-I',fontsize=axes_fontsize)
     
-    ax2 = fig.add_subplot(224)
+    ax2 = fig.add_subplot(222)
 
     dx=abs(np.diff(subsat_bin_center)[0])
     dy=abs(np.diff(cape_bin_center)[0])
     pdf_model=P0/(np.nansum(P0)*dx*dy)
 
     ax2.contourf(subsat_bin_center,cape_bin_center,np.log10(pdf_model).T)
-    ax2.set_xlabel('SUBSAT (K)',fontsize=13)
-    ax2.set_ylabel('CAPE (K)',fontsize=13)
-
-
-
+    ax2.set_xlabel('SUBSAT (K)',fontsize=axes_fontsize)
+    ax2.set_title(MODEL_NAME,fontsize=axes_fontsize)
 
     mp.tight_layout()
-    mp.savefig(FIG_OBS_DIR+"/"+FIG_OBS_FILENAME, bbox_inches="tight")
+    mp.savefig(FIG_OBS_DIR+"/"+FIG_OUTPUT_FILENAME+'.pcp_2d_pdf'+'.'+FIG_EXTENSION, bbox_inches="tight")
         
     print("...Completed!")
-    print("      OBS Figure saved as "+FIG_OBS_DIR+"/"+FIG_OBS_FILENAME+"!")
+    print("      2D pdfs saved as "+FIG_OBS_DIR+"/"+FIG_OUTPUT_FILENAME+'.pcp_2d_pdf'+'.'+FIG_EXTENSION+"!")
 
+
+    fig = mp.figure(figsize=(figsize1,figsize2))
+
+    ax = fig.add_subplot(221)
+
+    
+    Q0[Q0==0.0]=np.nan
+    Q_model=Q1/Q0
+    Q_model[Q0<NUMBER_THRESHOLD]=np.nan
+
+    Q0_obs[Q0_obs==0.0]=np.nan
+    Q_obs=Q1_obs/Q0_obs
+    Q_obs[Q0_obs<NUMBER_THRESHOLD]=np.nan
+
+    ax.scatter(bint_bin_center,Q_obs,marker='D',c='grey',label='TRMM 3B42 + ERA-I',alpha=0.5)
+    ax.scatter(bint_bin_center,Q_model,marker='*',s=20,c='red',label=MODEL_NAME,alpha=0.5)
+    ax.set_xlabel('$B_L$',fontsize=axes_fontsize)
+    ax.set_title('P vs. $B_L$',fontsize=axes_fontsize)
+
+    handles, labels = ax.get_legend_handles_labels()
+    num_handles=len(handles)
+    print(handles,labels)
+    
+    leg = ax.legend(handles[0:num_handles], labels[0:num_handles], fontsize=axes_fontsize, bbox_to_anchor=(0.05,0.95), \
+                bbox_transform=ax.transAxes, loc="upper left", borderaxespad=0, labelspacing=0.1, \
+                fancybox=False,scatterpoints=1,  framealpha=0, borderpad=0, \
+                handletextpad=0.1, markerscale=1, ncol=1, columnspacing=0.25)
+
+    ax.set_ylim(fig_params['f1'][2])
+    ax.set_ylabel(fig_params['f1'][5],fontsize=axes_fontsize)
+
+    
+#     ax.set_title('TRMM 3B42 + ERA-I',fontsize=axes_fontsize)
+    
+    ax2 = fig.add_subplot(222)
+
+    dx=abs(np.diff(bint_bin_center)[0])
+    pdf_obs=Q0_obs/(np.nansum(Q0_obs)*dx)
+    pdf_model=Q0/(np.nansum(Q0)*dx)
+
+    ax2.scatter(bint_bin_center,np.log10(pdf_obs),marker='D',c='grey',label='TRMM 3B42 + ERA-I',alpha=0.5)
+    ax2.scatter(bint_bin_center,np.log10(pdf_model),marker='*',s=20,c='red',label=MODEL_NAME,alpha=0.5)
+    num_handles=len(handles)
+    
+    leg = ax2.legend(handles[0:num_handles], labels[0:num_handles], fontsize=axes_fontsize, bbox_to_anchor=(0.05,0.95), \
+                bbox_transform=ax2.transAxes, loc="upper left", borderaxespad=0, labelspacing=0.1, \
+                fancybox=False, scatterpoints=1,  framealpha=1, borderpad=0, \
+                handletextpad=0.1, markerscale=1, ncol=1, columnspacing=0.25)
+
+    ax2.set_xlabel('$B_L$',fontsize=axes_fontsize)
+    ax2.set_title('pdfs of $B_L$',fontsize=axes_fontsize)
+
+    mp.tight_layout()
+    mp.savefig(FIG_OBS_DIR+"/"+FIG_OUTPUT_FILENAME+'.pcp_BL_stats'+'.'+FIG_EXTENSION, bbox_inches="tight")
         
-
-
+    print("...Completed!")
+    print("      2D pdfs saved as "+FIG_OBS_DIR+"/"+FIG_OUTPUT_FILENAME+'.pcp_BL_stats'+'.'+FIG_EXTENSION+"!")
 
         
 

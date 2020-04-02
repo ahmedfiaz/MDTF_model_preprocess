@@ -85,7 +85,6 @@ if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
 
     if bin_data["PREPROCESS_THETAE"]==1:
         print("   THETA_E-BASED pre-processing required")
-        print(len(bin_data["args1"]))
         convecTransLev2_preprocess(bin_data["args1"])
 
     ### Only for CMIP6 models with different output formats between precip
@@ -113,6 +112,7 @@ else: # Binned data file exists & BIN_ANYWAY=False
     binned_output=convecTransLev2_loadAnalyzedData(bin_data["args2"])
 
 
+plot_data["args4"].append(bin_data["MODEL"])
 # Plot binning results & save the figure in wkdir/MDTF_casename/.../
 convecTransLev2_plot(binned_output,plot_data["plot_params"],plot_data["args3"],plot_data["args4"])
 print("**************************************************")

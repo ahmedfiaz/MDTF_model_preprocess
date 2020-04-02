@@ -17,7 +17,9 @@ import glob
 # START USER SPECIFIED SECTION
 # ======================================================================
 # Model name
-MODEL_NAME='NASA-GISS'
+# MODEL_NAME='NASA-GISS'
+MODEL_NAME='SNU.SAM0-UNICON'
+
 START_DATE=2013010106 ## TIME FORMAT: YYYYMMDDHH
 END_DATE=2014123118 
 PARENT_DATE=1850010100
@@ -97,7 +99,7 @@ BIN_OUTPUT_FILENAME=MODEL_NAME+".convecTransLev2"
 
 # ======================================================================
 # Re-do binning even if binned data file detected (default: True)
-BIN_ANYWAY=False
+BIN_ANYWAY=True
 
 # ======================================================================
 # Column Water Vapor (CWV in mm) range & bin-width
@@ -138,7 +140,7 @@ p_lev_mid=500
 
 # Threshold value defining precipitating events [mm/hr]
 PRECIP_THRESHOLD=0.25
-PRECIP_FACTOR=1e3 ## Factor to convert precip. units to mm/r
+PRECIP_FACTOR=1e3 ## Factor to convert precip. units to mm/hr
 # ======================================================================
 # END USER SPECIFIED SECTION
 # ======================================================================
@@ -274,6 +276,7 @@ if (len(data["thetae_list"])<len(data["ta_list"])):
 else:
     data["PREPROCESS_THETAE"]=0
     data["SAVE_THETAE"]=0
+
     
 ### Only for models where the precip. output has a 
 ### different frequency than the theta_e output.
@@ -286,7 +289,7 @@ if (len(data['pr_list'])!=len(data['ta_list'])):
         data["SAVE_PRECIP"]=0
 else:
     data["MATCH_PRECIP_THETAE"]=0
-    data["SAVE_PRECIP_THETAE"]=0
+    data["SAVE_PRECIP"]=0
 
 
 # Taking care of function arguments for binning

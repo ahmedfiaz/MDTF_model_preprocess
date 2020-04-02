@@ -24,7 +24,8 @@ NUMBER_THRESHOLD=50 # Don't plot points where <100 samples are used for conditio
                      # averaging
 
 FIG_OUTPUT_DIR=os.environ["WK_DIR"]+"/model/PS"
-FIG_OUTPUT_FILENAME=bin_data["BIN_OUTPUT_FILENAME"]+".ps"
+FIG_OUTPUT_FILENAME=bin_data["BIN_OUTPUT_FILENAME"]
+FIG_EXTENSION='pdf'
 
 ## Binned data filename & figure directory/filename for OBS (default: R2TMIv7) ##
 OBS="ERA-I + TRMM3B42" # will show up in the MODEL figure
@@ -32,8 +33,6 @@ OBS="ERA-I + TRMM3B42" # will show up in the MODEL figure
 bin_obs_list=sorted(glob.glob(os.environ["OBS_DATA"]\
                     +"trmm3B42_erai_2002_2014.convecTransLev2"
                     +".nc"))
-print(bin_obs_list)                    
-
 FIG_OBS_DIR=os.environ["WK_DIR"]+"/obs/PS"
 FIG_OBS_FILENAME="convecTransLev2_trmm3B42_erai_2002_2014"+".pdf"
 
@@ -50,8 +49,8 @@ OVERLAY_OBS_ON_TOP_OF_MODEL_FIG=True
 
 ## Plot formatting ##
 axes_fontsize = 13 # size of font in all plots
-axes_elev= 10 # 30 elevation for 3D plot
-axes_azim=270 # 300 azimuthal angle for 3D plot
+axes_elev= 20 # 30 elevation for 3D plot
+axes_azim=290 # 300 azimuthal angle for 3D plot
 # legend_fontsize = 9
 # marker_size = 40 # size of markers in scatter plots
 # xtick_pad = 10 # padding between x tick labels and actual plot
@@ -172,14 +171,17 @@ data={}
 data["FIG_OUTPUT_DIR"]=FIG_OUTPUT_DIR
 data["FIG_OUTPUT_FILENAME"]=FIG_OUTPUT_FILENAME
 data["FIG_OBS_FILENAME"]=FIG_OBS_FILENAME
+data["FIG_EXTENSION"]=FIG_EXTENSION
 
 data["args3"]=[ bin_obs_list]
+print(data['args3'])
+
 # ,\
 #                 bin_data["TAVE_VAR"],\
 #                 bin_data["QSAT_INT_VAR"],\
 #                 bin_data["BULK_TROPOSPHERIC_TEMPERATURE_MEASURE"] ]
 
-data["args4"]=[ NUMBER_THRESHOLD, FIG_OUTPUT_DIR,FIG_OUTPUT_FILENAME,\
+data["args4"]=[ NUMBER_THRESHOLD, FIG_OUTPUT_DIR,FIG_OUTPUT_FILENAME, FIG_EXTENSION,\
                 OBS, FIG_OBS_DIR,FIG_OBS_FILENAME,\
                 USE_SAME_COLOR_MAP,OVERLAY_OBS_ON_TOP_OF_MODEL_FIG ]
 # 
