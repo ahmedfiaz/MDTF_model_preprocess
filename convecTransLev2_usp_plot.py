@@ -20,7 +20,7 @@ with open(os.environ["WK_DIR"]+"/"+"convecTransLev2_calc_parameters.json") as ou
 # START USER SPECIFIED SECTION
 # ======================================================================
 # Don't plot bins with PDF<PDF_THRESHOLD
-NUMBER_THRESHOLD=50 # Don't plot points where <100 samples are used for conditional 
+NUMBER_THRESHOLD=50 # Don't plot points where number of samples < NUMBER_THRESHOLD in conditional 
                      # averaging
 
 FIG_OUTPUT_DIR=os.environ["WK_DIR"]+"/model/PS"
@@ -50,7 +50,7 @@ OVERLAY_OBS_ON_TOP_OF_MODEL_FIG=True
 ## Plot formatting ##
 axes_fontsize = 13 # size of font in all plots
 axes_elev= 20 # 30 elevation for 3D plot
-axes_azim=290 # 300 azimuthal angle for 3D plot
+axes_azim=300 # 300 azimuthal angle for 3D plot
 # legend_fontsize = 9
 # marker_size = 40 # size of markers in scatter plots
 # xtick_pad = 10 # padding between x tick labels and actual plot

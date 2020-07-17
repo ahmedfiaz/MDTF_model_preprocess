@@ -23,10 +23,13 @@ import numpy as np
 import numba
 import glob
 import os
-from numba import jit,autojit
+from numba import jit
 import scipy.io
 from scipy.interpolate import NearestNDInterpolator
 from netCDF4 import Dataset
+from cftime import num2pydate
+
+
 from vert_cython import find_closest_index_2D, compute_layer_thetae
 import matplotlib
 # matplotlib.use('agg')
@@ -54,8 +57,8 @@ import matplotlib.rcsetup as rcsetup
 #  takes arguments and bins by subsat+ cape & bint
 
 @jit(nopython=True) 
-def convecTransLev2_binThetae(lon_idx, REGION, NUMBER_CAPE_BIN, NUMBER_SUBSAT_BIN, 
-NUMBER_BINT_BIN, CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, q0, q1, q2):
+def convecTransLev2_binThetae(lon_idx, REGION, PRECIP_THRESHOLD, NUMBER_CAPE_BIN, NUMBER_SUBSAT_BIN, 
+NUMBER_BINT_BIN, CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, pe, q0, q1, q2, qe):
  
     for lat_idx in np.arange(SUBSAT.shape[1]):
         subsat_idx=SUBSAT[:,lat_idx,lon_idx]
@@ -66,16 +69,23 @@ NUMBER_BINT_BIN, CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, q0, q1, q2):
         if reg>0:
             for time_idx in np.arange(SUBSAT.shape[0]):
                 if (cape_idx[time_idx]<NUMBER_CAPE_BIN and cape_idx[time_idx]>=0 
-                and subsat_idx[time_idx]<NUMBER_SUBSAT_BIN and subsat_idx[time_idx]>=0):
+                and subsat_idx[time_idx]<NUMBER_SUBSAT_BIN and subsat_idx[time_idx]>=0
+                and np.isfinite(rain[time_idx])):
                     p0[subsat_idx[time_idx],cape_idx[time_idx]]+=1
                     p1[subsat_idx[time_idx],cape_idx[time_idx]]+=rain[time_idx]
                     p2[subsat_idx[time_idx],cape_idx[time_idx]]+=rain[time_idx]**2
-
-                if (bint_idx[time_idx]<NUMBER_BINT_BIN and bint_idx[time_idx]>=0):
+                    
+                if (bint_idx[time_idx]<NUMBER_BINT_BIN and bint_idx[time_idx]>=0
+                and np.isfinite(rain[time_idx])):
                     q0[bint_idx[time_idx]]+=1
                     q1[bint_idx[time_idx]]+=rain[time_idx]
                     q2[bint_idx[time_idx]]+=rain[time_idx]**2
                 
+                ### Count precipitating points ###
+                if (rain[time_idx]>PRECIP_THRESHOLD):
+                    pe[subsat_idx[time_idx],cape_idx[time_idx]]+=1
+                    qe[bint_idx[time_idx]]+=1
+
                                 
 #                 if (rain[time_idx]>PRECIP_THRESHOLD):
 #                     pe[subsat_idx[time_idx],cape_idx[time_idx]]+=1
@@ -89,7 +99,8 @@ NUMBER_BINT_BIN, CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, q0, q1, q2):
 #  takes arguments and bins by CWV & tave bins
 
 @jit(nopython=True)
-def convecTransBasic_binTave(lon_idx, CWV_BIN_WIDTH, NUMBER_OF_REGIONS, NUMBER_TEMP_BIN, NUMBER_CWV_BIN, PRECIP_THRESHOLD, REGION, CWV, RAIN, temp, QSAT_INT, p0, p1, p2, pe, q0, q1):
+def convecTransBasic_binTave(lon_idx, CWV_BIN_WIDTH, NUMBER_OF_REGIONS, NUMBER_TEMP_BIN, NUMBER_CWV_BIN, 
+PRECIP_THRESHOLD, REGION, CWV, RAIN, temp, QSAT_INT, p0, p1, p2, pe, q0, q1):
     for lat_idx in np.arange(CWV.shape[1]):
         reg=REGION[lon_idx,lat_idx]
         if (reg>0 and reg<=NUMBER_OF_REGIONS):
@@ -127,6 +138,74 @@ def convecTransBasic_binQsatInt(lon_idx, NUMBER_OF_REGIONS, NUMBER_TEMP_BIN, NUM
                     p2[reg-1,cwv_idx[time_idx],temp_idx[time_idx]]+=rain[time_idx]**2
                     if (rain[time_idx]>PRECIP_THRESHOLD):
                         pe[reg-1,cwv_idx[time_idx],temp_idx[time_idx]]+=1
+
+
+### 
+def convecTransLev2_calcqT_ratio(Z,counts,cape_bin_center,subsat_bin_center):
+    '''
+    Function that takes the precipitation surface and produces an estimate of the 
+    temperature-to-moisture sensitivity. This metric measures the rate of precipitation
+    increase along the CAPE direction and compares to the corresponding increase along the
+    SUBSAT direction.
+    '''
+
+    ### Find the location of max counts. This is generally near the precipitation
+    ### onset.
+    subsat_max_pop_ind,cape_max_pop_ind=np.where(counts==np.nanmax(counts))
+
+    ### Create three copies of the 2D precipitation surface array.
+    ### Divide the precipitation surface into three portions: the CAPE, SUBSAT and
+    ### overlapping portions 
+    ### The CAPE portion is for SUBSAT values beyond the SUBSAT index of max counts
+    ### The SUBSAT portion is for CAPE values beyond the CAPE index of max counts
+    ### The overlapping portion contains the overlapping components of the CAPE and SUBSAT arrays.
+    
+    Z_subsat=np.copy(Z)
+    Z_subsat[:]=np.nan
+    Z_subsat[subsat_max_pop_ind[0]-1:,cape_max_pop_ind[0]:]=Z[subsat_max_pop_ind[0]-1:,cape_max_pop_ind[0]:]
+
+    Z_cape=np.copy(Z)
+    Z_cape[:]=np.nan
+    Z_cape[:subsat_max_pop_ind[0],:cape_max_pop_ind[0]+1]=Z[:subsat_max_pop_ind[0],:cape_max_pop_ind[0]+1]
+
+    Z_overlap=np.copy(Z)
+    Z_overlap[:]=np.nan
+    Z_overlap[:subsat_max_pop_ind[0],cape_max_pop_ind[0]:]=Z[:subsat_max_pop_ind[0],cape_max_pop_ind[0]:]
+
+
+    ### Get the average cape and subsat values for each of the three regions
+    fin0=(np.where(np.isfinite(Z_overlap)))
+    fin1=(np.where(np.isfinite(Z_cape)))
+    fin2=(np.where(np.isfinite(Z_subsat)))
+
+    subsat_y0=subsat_bin_center[fin0[0]]
+    cape_x0=cape_bin_center[fin0[1]]
+    
+    subsat_y1=subsat_bin_center[fin1[0]]
+    cape_x1=cape_bin_center[fin1[1]]
+
+    subsat_y2=subsat_bin_center[fin2[0]]
+    cape_x2=cape_bin_center[fin2[1]]
+
+    
+    ### Get a distance measure between the overlapping region to the cape and subsat regions
+
+    dcape=abs(cape_x0.mean()-cape_x1.mean())
+    dsubsat=abs(subsat_y0.mean()-subsat_y2.mean())
+        
+    ### Get a distance measure between the overlapping region to the cape and subsat regions
+    ### Compute the average precipitation within the CAPE and SUBSAT regions. 
+
+    area_cape=np.nanmean(Z_cape)
+    area_subsat=np.nanmean(Z_subsat)
+    area_overlap=np.nanmean(Z_overlap)
+    darea_cape=abs(area_overlap-area_cape)
+    darea_subsat=abs(area_overlap-area_subsat)
+    ratio=darea_cape*dsubsat/(dcape*darea_subsat)
+    
+    return ratio
+
+
 
 
 ### Compute the saturation vapor pressure for a given temperature ###
@@ -295,7 +374,6 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     else:
         exit('     Check pressure level ordering. Exiting now..')
     
-    
     lev=np.swapaxes(pres,0,1)
     lev=lev.reshape(*lev.shape[:1],-1)
     
@@ -397,45 +475,44 @@ def convecTransLev2_matchpcpta(ta_netcdf_filename, TA_VAR, pr_list, PR_VAR,\
     ### LOAD T & q ###
 
     ta_netcdf=Dataset(ta_netcdf_filename,"r")
-    time=np.asarray(ta_netcdf.variables[TIME_VAR][:],dtype="float")
-    time_units=str([(j.units) for i,j in ta_netcdf.variables.items() if i=='time'][0])
+    time_arr=ta_netcdf.variables[TIME_VAR]
+    time=np.asarray(time_arr[:],dtype="float")
+    time_units=time_arr.units
+    dates_ta=num2pydate(time, units=time_units)    
     ta_netcdf.close()
-    
-    pt_date=dt.datetime.strptime(str(PARENT_DATE),"%Y%m%d%H")
-    dates_pr=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]    
-
+        
     for i in pr_list:
     
         pr_netcdf=Dataset(i,"r")
-        time_pr=np.asarray(pr_netcdf.variables[TIME_VAR][:],dtype="float")
+        time_arr=ta_netcdf.variables[TIME_VAR]
+        time_pr=np.asarray(time_arr[:],dtype="float")
+        dates_pr=num2pydate(time_pr, units=time_arr.units)    
         lat=np.asarray(pr_netcdf.variables[LAT_VAR][:],dtype="float")
         lon=np.asarray(pr_netcdf.variables[LON_VAR][:],dtype="float")
-
+    
         ## Take latitudinal slice
         ilatx=np.where(np.logical_and(lat>=-20.0,lat<=20.0))[0]
         lat=lat[ilatx]
 
         pr_var=np.asarray(pr_netcdf.variables[PR_VAR][:,ilatx,:],dtype="float")*PRECIP_FACTOR
-        pr_units=str([(j.units) for i,j in pr_netcdf.variables.items() if i==PR_VAR][0])
-#         print(pr_units)
-#         print(np.max(pr_var)*1e3,np.min(pr_var))
-#         exit()
+        pr_units=pr_netcdf.variables[PR_VAR].units
+
         ### Extract time of closest approach ###
-        ## Note that 0.0625 is the time duration in fraction of the day ###        
-        time_ind=([j for j,k in enumerate(time_pr) if abs((k-time)).min()<=0.0625])
         ## Choosing time so that the 3hrly avg. precip. is centered 1.5 hrs after the
         ## T,q measurement.
-        
-        time_ind=time_ind[1::2]
-        time_ind_new=np.zeros((max(len(time_ind),time.size)))
+
+        time_ind=([j for j,k in enumerate(dates_pr) for l in dates_ta 
+        if np.logical_and((k-l).total_seconds()/3600.<=1.5,(k-l).total_seconds()/3600.>0.0)])
+
+        time_ind_new=np.zeros((max(len(dates_ta),len(time_ind))))
         ### time_ind_new ensures that any mismatch is size is accounted for
         ### for now it specifically targets the case where time.size-len(time_ind)=1 
         ### We can easily generalize this case to time.size-len(time_ind)=n
         
-        diff=time.size-len(time_ind)
+        diff=len(dates_ta)-len(time_ind)
         
         try:
-            assert len(time_ind)==len(time)
+            assert len(time_ind)==len(dates_ta)
             time_ind_new[:]=time_ind
         except:
             time_ind_new[:-diff]=time_ind
@@ -443,6 +520,7 @@ def convecTransLev2_matchpcpta(ta_netcdf_filename, TA_VAR, pr_list, PR_VAR,\
                
         time_ind_new_fin=(np.int_(time_ind_new[np.isfinite(time_ind_new)]))
         time_ind_new_nan=np.isnan(np.int_(time_ind_new))
+        
     
         ### Assuming that time is index 0
         pr_var_temp=np.zeros((time_ind_new.size,pr_var.shape[1],pr_var.shape[2]))
@@ -456,7 +534,7 @@ def convecTransLev2_matchpcpta(ta_netcdf_filename, TA_VAR, pr_list, PR_VAR,\
             pr_var_temp[-(diff+1):-1,...]=np.nan
     
         pr_netcdf.close()
-        
+                 
         if SAVE_PRECIP==1:
 
     #         Create PREPROCESSING_OUTPUT_DIR
@@ -550,8 +628,10 @@ def convecTransLev2_preprocess(*argsv):
     p_lev_mid,\
     time_idx_delta,\
     SAVE_THETAE,\
+    MATCH_PRECIP_THETAE,\
     PREPROCESSING_OUTPUT_DIR,\
     PRECIP_THRESHOLD,\
+    PRECIP_FACTOR,\
     BIN_OUTPUT_DIR,\
     BIN_OUTPUT_FILENAME,\
     TIME_VAR,\
@@ -560,6 +640,7 @@ def convecTransLev2_preprocess(*argsv):
     
     print("   Start pre-processing atmospheric temperature & moisture fields...")
     for li in np.arange(len(ta_list)):
+        print("     pre-processing "+ta_list[li])
         convecTransLev2_calcthetae_ML(ta_list[li], TA_VAR, hus_list[li], HUS_VAR,\
                             LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL, p_lev_mid, time_idx_delta,\
                             START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
@@ -665,8 +746,10 @@ def convecTransLev2_bin(REGION, *argsv):
     p_lev_mid,\
     time_idx_delta,\
     SAVE_THETAE,\
+    MATCH_PRECIP_THETAE,\
     PREPROCESSING_OUTPUT_DIR,\
     PRECIP_THRESHOLD,\
+    PRECIP_FACTOR,\
     BIN_OUTPUT_DIR,\
     BIN_OUTPUT_FILENAME,\
     TIME_VAR,\
@@ -675,8 +758,9 @@ def convecTransLev2_bin(REGION, *argsv):
     
     # Re-load file lists for thetae_ave & precip.
     thetae_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+"/"+THETAE_OUT+'*'))
-    pr_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+"/"+PR_VAR+'*'))
-        
+    if (MATCH_PRECIP_THETAE==1):
+        pr_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+"/"+PR_VAR+'*'))
+            
     # Define Bin Centers
     cape_bin_center=np.arange(CAPE_RANGE_MIN,CAPE_RANGE_MAX+CAPE_BIN_WIDTH,CAPE_BIN_WIDTH)
     subsat_bin_center=np.arange(SUBSAT_RANGE_MIN,SUBSAT_RANGE_MAX+SUBSAT_BIN_WIDTH,SUBSAT_BIN_WIDTH)
@@ -690,10 +774,12 @@ def convecTransLev2_bin(REGION, *argsv):
     P0=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
     P1=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
     P2=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
+    PE=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
     
     Q0=np.zeros((NUMBER_BINT_BIN))
     Q1=np.zeros((NUMBER_BINT_BIN))
     Q2=np.zeros((NUMBER_BINT_BIN))
+    QE=np.zeros((NUMBER_BINT_BIN))
     
     
     ### Internal constants ###
@@ -703,22 +789,70 @@ def convecTransLev2_bin(REGION, *argsv):
     thresh_pres=700 ## Filter all point below this surface pressure in hPa
 
     for i,(j,k) in enumerate(zip(thetae_list,pr_list)):
-        print(j,k)
         
-        pr_netcdf=Dataset(k,'r')
-        lat=np.asarray(pr_netcdf.variables[LAT_VAR][:],dtype="float")
-        pr=np.squeeze(np.asarray(pr_netcdf.variables[PR_VAR][:,:,:],dtype="float"))
-        pr_netcdf.close()
-        print("      "+k+" Loaded!")
-
         thetae_netcdf=Dataset(j,'r')
         lat=np.asarray(thetae_netcdf.variables[LAT_VAR][:],dtype="float")
+        time=np.asarray(thetae_netcdf.variables[TIME_VAR][:],dtype="float")
         thetae_bl=np.asarray(thetae_netcdf.variables[BL_THETAE_VAR][:],dtype="float")
         thetae_lt=np.asarray(thetae_netcdf.variables[LFT_THETAE_VAR][:],dtype="float")
         thetae_sat_lt=np.asarray(thetae_netcdf.variables[LFT_THETAE_SAT_VAR][:],dtype="float")
         ps=np.asarray(thetae_netcdf.variables[PS_VAR][:],dtype="float")
         thetae_netcdf.close()
         print("      "+j+" Loaded!")
+
+        pr_netcdf=Dataset(k,'r')
+        lat_pr=np.asarray(pr_netcdf.variables[LAT_VAR][:],dtype="float")
+        lat_idx=[n for n,m in enumerate(lat_pr) if m in lat] ## Only extract a slice of the prc data
+        time_pr=np.asarray(pr_netcdf.variables[TIME_VAR][:],dtype="float")
+        pr=np.squeeze(np.asarray(pr_netcdf.variables[PR_VAR][:,lat_idx,:],dtype="float"))
+        pr_netcdf.close()
+        
+        print(np.nanmax(thetae_bl),np.nanmax(pr),i,j,k)
+
+        continue
+                                                             
+        print("      "+k+" Loaded!")
+        ### Ensure that thetae variables and precip. variables are matched ###
+        ### If not, perform time matching ###
+
+        if (MATCH_PRECIP_THETAE==0):
+        
+            print('Matching precip. and theta_e')
+
+            time_ind=([n for n,m in enumerate(time_pr) if abs((m-time)).min()<=0.0625])
+            ## Choosing time so that the 3hrly avg. precip. is centered 1.5 hrs after the
+            ## T,q measurement.
+        
+            time_ind=time_ind[1::2]
+            time_ind_new=np.zeros((max(len(time_ind),time.size)))
+            
+            diff=time.size-len(time_ind)
+        
+            try:
+                assert len(time_ind)==len(time)
+                time_ind_new[:]=time_ind
+            except:
+                time_ind_new[:-diff]=time_ind
+                time_ind_new[-(diff+1):-1]=np.nan 
+               
+            time_ind_new_fin=(np.int_(time_ind_new[np.isfinite(time_ind_new)]))
+            time_ind_new_nan=np.isnan(np.int_(time_ind_new))
+    
+            ### Assuming that time is index 0
+            pr_var_temp=np.zeros((time_ind_new.size,pr.shape[1],pr.shape[2]))
+        
+            assert diff>=0
+        
+            if diff==0:
+                pr_var_temp[:,...]=pr[time_ind_new_fin,...]        
+            else:               
+                pr_var_temp[:-diff,...]=pr[time_ind_new_fin,...]
+                pr_var_temp[-(diff+1):-1,...]=np.nan
+                
+            pr=pr_var_temp*PRECIP_FACTOR
+            
+        exit()
+            
 
         ps=ps*1e-2 ## Convert surface pressure to hPa
         
@@ -738,6 +872,7 @@ def convecTransLev2_bin(REGION, *argsv):
         subsat[ps<thresh_pres]=np.nan
         bint[ps<thresh_pres]=np.nan
 
+        
         print("      Binning...")
         
         ### Start binning
@@ -752,7 +887,7 @@ def convecTransLev2_bin(REGION, *argsv):
 
         RAIN=pr        
         RAIN[RAIN<0]=0 # Sometimes models produce negative rain rates
-        
+
         
         # Binning is structured in the following way to avoid potential round-off issue
         #  (an issue arise when the total number of events reaches about 1e+8)
@@ -760,24 +895,33 @@ def convecTransLev2_bin(REGION, *argsv):
             p0=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
             p1=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
             p2=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
+            pe=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
             
             q0=np.zeros((NUMBER_BINT_BIN))
             q1=np.zeros((NUMBER_BINT_BIN))
             q2=np.zeros((NUMBER_BINT_BIN))
+            qe=np.zeros((NUMBER_BINT_BIN))
             
-            convecTransLev2_binThetae(lon_idx, REGION, NUMBER_CAPE_BIN, NUMBER_SUBSAT_BIN, 
-            NUMBER_BINT_BIN, CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, q0, q1, q2)
+            convecTransLev2_binThetae(lon_idx, REGION, PRECIP_THRESHOLD,
+            NUMBER_CAPE_BIN, NUMBER_SUBSAT_BIN, NUMBER_BINT_BIN, 
+            CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, pe, q0, q1, q2, qe)
 
             P0+=p0
             P1+=p1
             P2+=p2
+            PE+=pe
             
             Q0+=q0
             Q1+=q1
             Q2+=q2
-            
-        
+            QE+=qe
+
+        temp_prc=P1/P0
+        print(np.nanmax(temp_prc),P0.max())
         print("...Complete for current files!")
+        
+        
+    
 
     print("   Total binning complete!")
     
@@ -805,8 +949,10 @@ def convecTransLev2_bin(REGION, *argsv):
 
 
     p0=bin_output_netcdf.createVariable("P0",np.float64,("subsat","cape"))
-    print(p0.shape,P0.shape)
     p0[:,:]=P0
+    
+    pe=bin_output_netcdf.createVariable("PE",np.float64,("subsat","cape"))
+    pe[:,:]=PE
 
     p1=bin_output_netcdf.createVariable("P1",np.float64,("subsat","cape"))
     p1.units="mm/hr"
@@ -815,10 +961,13 @@ def convecTransLev2_bin(REGION, *argsv):
     p2=bin_output_netcdf.createVariable("P2",np.float64,("subsat","cape"))
     p2.units="mm^2/hr^2"
     p2[:,:]=P2
-    
+
     
     q0=bin_output_netcdf.createVariable("Q0",np.float64,("bint"))
     q0[:]=Q0
+
+    qe=bin_output_netcdf.createVariable("QE",np.float64,("bint"))
+    qe[:]=QE
 
     q1=bin_output_netcdf.createVariable("Q1",np.float64,("bint"))
     q1.units="mm/hr"
@@ -828,12 +977,11 @@ def convecTransLev2_bin(REGION, *argsv):
     q2.units="mm^2/hr^2"
     q2[:]=Q2
     
-    
     bin_output_netcdf.close()
 
     print("   Binned results saved as "+BIN_OUTPUT_DIR+BIN_OUTPUT_FILENAME+".nc!")
 
-    return subsat_bin_center,cape_bin_center,bint_bin_center,P0,P1,P2,Q0,Q1,Q2
+    return subsat_bin_center,cape_bin_center,bint_bin_center,P0,PE,P1,P2,Q0,QE,Q1,Q2
 
         
                 
@@ -883,9 +1031,11 @@ def convecTransLev2_loadAnalyzedData(*argsv):
             print(bin_output_netcdf)
 
             P0=np.asarray(bin_output_netcdf.variables["P0"][:,:],dtype="float")
+#             PE=np.asarray(bin_output_netcdf.variables["PE"][:,:],dtype="float")
             P1=np.asarray(bin_output_netcdf.variables["P1"][:,:],dtype="float")
             P2=np.asarray(bin_output_netcdf.variables["P2"][:,:],dtype="float")
             Q0=np.asarray(bin_output_netcdf.variables["Q0"][:],dtype="float")
+#             QE=np.asarray(bin_output_netcdf.variables["QE"][:],dtype="float")
             Q1=np.asarray(bin_output_netcdf.variables["Q1"][:],dtype="float")
             Q2=np.asarray(bin_output_netcdf.variables["Q2"][:],dtype="float")
 
@@ -899,9 +1049,10 @@ def convecTransLev2_loadAnalyzedData(*argsv):
             
         # Return CWV_BIN_WIDTH & PRECIP_THRESHOLD to make sure that
         #  user-specified parameters are consistent with existing data
+#         return subsat_bin_center,cape_bin_center,bint_bin_center,P0,PE,P1,P2,Q0,QE,Q1,Q2
         return subsat_bin_center,cape_bin_center,bint_bin_center,P0,P1,P2,Q0,Q1,Q2
 
-    else: # If the binned model/obs data does not exist (in practive, for obs data only)   
+    else: # If the binned model/obs data does not exist (in practice, for obs data only)   
         return [],[],[],[],[],[],[],[],[]
 
 
@@ -911,7 +1062,6 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     Plotting precipitation surfaces in 3D
     '''
 
-
     print("Plotting...")
 
     # Load binned model data with parameters
@@ -920,12 +1070,14 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     cape_bin_center,\
     bint_bin_center,\
     P0,\
+    PE,\
     P1,\
     P2,\
     Q0,\
+    QE,\
     Q1,\
     Q2=ret
-    
+        
     # Load plotting parameters from convecTransBasic_usp_plot.py
     fig_params=argsv1
 
@@ -974,8 +1126,33 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     Q0_obs,\
     Q1_obs,\
     Q2_obs=convecTransLev2_loadAnalyzedData(argsv2)
-    
 
+
+
+    ### Create obs. binned precip. ###    
+    P0_obs[P0_obs==0.0]=np.nan
+    P_obs=P1_obs/P0_obs
+    P_obs[P0_obs<NUMBER_THRESHOLD]=np.nan
+
+    ### Create model binned precip. ###    
+    P0[P0==0.0]=np.nan
+    P_model=P1/P0
+    P_model[P0<NUMBER_THRESHOLD]=np.nan
+
+    ### Compute q-T ratio ###    
+    gamma_qT={}
+    gamma_qT['OBS']=convecTransLev2_calcqT_ratio(P_obs,P0_obs,cape_bin_center_obs,subsat_bin_center_obs)
+    gamma_qT[MODEL_NAME]=convecTransLev2_calcqT_ratio(P_model,PE,cape_bin_center,subsat_bin_center)
+
+    ### Save the qT ratios in a pickle ###
+    import pickle
+    fname='gammaqT_'+MODEL_NAME+'.out'
+    with open(fname, 'wb') as fp:
+        pickle.dump(gamma_qT, fp, protocol=pickle.HIGHEST_PROTOCOL)    
+    #######
+
+
+    
 #     Check whether the detected binned MODEL data is consistent with User-Specified Parameters
 #      (Not all parameters, just 3)
 #     if (CBW!=CWV_BIN_WIDTH):
@@ -998,9 +1175,6 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     #  if the binned OBS data exists, checking by P0_obs==[]
 #     if (P0_obs!=[]):
         # Post-binning Processing before Plotting
-    P0_obs[P0_obs==0.0]=np.nan
-    P_obs=P1_obs/P0_obs
-    P_obs[P0_obs<NUMBER_THRESHOLD]=np.nan
 #         PDF_obs=np.zeros(P0_obs.shape)
 #         for reg in np.arange(P0_obs.shape[0]):
 #             PDF_obs[reg,:,:]=P0_obs[reg,:,:]/np.nansum(P0_obs[reg,:,:])/CWV_BIN_WIDTH_obs
@@ -1008,6 +1182,9 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
 #         pdf_gt_th_obs=np.zeros(PDF_obs.shape)
 #         with np.errstate(invalid="ignore"):
 #             pdf_gt_th_obs[PDF_obs>PDF_THRESHOLD]=1
+
+    ### Compute the qT ratio from model precipitation surfaces ###
+
 
     axes_fontsize,axes_elev,axes_azim,figsize1,figsize2 = fig_params['f0']
     print("   Plotting Surfaces..."),
@@ -1030,10 +1207,19 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     for spine in ax.spines.values():
         spine.set_visible(False)
 
-    ax.set_xlim(fig_params['f1'][0])
-    ax.set_ylim(fig_params['f1'][1])
+#     ax.set_xlim(fig_params['f1'][0])
+#     ax.set_ylim(fig_params['f1'][1])
     ax.set_zlim(fig_params['f1'][2])
-    
+
+    ### Set the x and y limits to span the union of both obs and model bins
+    ax.set_xlim(min(subsat_bin_center_obs.min(),subsat_bin_center.min()),
+    max(subsat_bin_center_obs.max(),subsat_bin_center.max()))
+
+    ax.set_ylim(min(cape_bin_center_obs.min(),cape_bin_center.min()),
+    max(cape_bin_center_obs.max(),cape_bin_center.max()))
+
+    ax.text2D(.6,.75,'$\gamma_{qT}$=%.2f'%(gamma_qT['OBS']),transform=ax.transAxes,fontsize=15)
+
     ax.set_xlabel(fig_params['f1'][3],fontsize=axes_fontsize)
     ax.set_ylabel(fig_params['f1'][4],fontsize=axes_fontsize)
     ax.set_zlabel(fig_params['f1'][5],fontsize=axes_fontsize)
@@ -1041,13 +1227,19 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     ax.set_title('TRMM 3B42 + ERA-I',fontsize=axes_fontsize)
 
     ax1 = fig.add_subplot(122, projection='3d')
-    
+    X, Y = np.meshgrid(subsat_bin_center_obs,cape_bin_center_obs)
     ax1.plot_surface(X,Y,P_obs.T,color='black',zorder=50,alpha=0.25,vmax=5.,vmin=0.)
 
-    P0[P0==0.0]=np.nan
-    P_model=P1/P0
-    P_model[P0<NUMBER_THRESHOLD]=np.nan
+#     xind=np.where((subsat_bin_center_obs==10))[0]
+#     yind=np.where((cape_bin_center_obs==10))[0]
+# 
+#     print(P0[xind,yind])
+#     print(P1[xind,yind])
+#     exit()
+
+    X, Y = np.meshgrid(subsat_bin_center,cape_bin_center)
     colors_model=matplotlib.cm.nipy_spectral(normed(P_model.T))
+
 
     ax1.plot_wireframe(X,Y,P_model.T,color='black')
     ax1.plot_surface(X,Y,P_model.T,facecolors=colors_model,alpha=0.5)#,cmap=mp.get_cmap('nipy_spectral'),alpha=0.5,
@@ -1055,15 +1247,24 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     for spine in ax1.spines.values():
         spine.set_visible(False)
         
-    ax1.set_xlim(fig_params['f1'][0])
-    ax1.set_ylim(fig_params['f1'][1])
+#     ax1.set_xlim(fig_params['f1'][0])
+#     ax1.set_ylim(fig_params['f1'][1])
     ax1.set_zlim(fig_params['f1'][2])
     
+    ### Set the x and y limits to span the union of both obs and model bins
+    ax1.set_xlim(min(subsat_bin_center_obs.min(),subsat_bin_center.min()),
+    max(subsat_bin_center_obs.max(),subsat_bin_center.max()))
+
+    ax1.set_ylim(min(cape_bin_center_obs.min(),cape_bin_center.min()),
+    max(cape_bin_center_obs.max(),cape_bin_center.max()))
+
+
     ax1.set_xlabel(fig_params['f1'][3],fontsize=axes_fontsize)
     ax1.set_ylabel(fig_params['f1'][4],fontsize=axes_fontsize)
     ax1.set_zlabel(fig_params['f1'][5],fontsize=axes_fontsize)
     ax1.view_init(elev=axes_elev, azim=axes_azim)
     ax1.set_title(MODEL_NAME,fontsize=axes_fontsize)
+    ax1.text2D(1.7,.75,'$\gamma_{qT}$=%.2f'%(gamma_qT[MODEL_NAME]),transform=ax.transAxes,fontsize=15)
 
     
     mp.tight_layout()
@@ -1082,10 +1283,16 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     dy=abs(np.diff(cape_bin_center)[0])
     pdf_obs=P0_obs/(np.nansum(P0_obs)*dx*dy)
 
-    ax.contourf(subsat_bin_center,cape_bin_center,np.log10(pdf_obs).T)
+    ax.contourf(subsat_bin_center_obs,cape_bin_center_obs,np.log10(pdf_obs).T)
     ax.set_xlabel('SUBSAT (K)',fontsize=axes_fontsize)
     ax.set_ylabel('CAPE (K)',fontsize=axes_fontsize)
     ax.set_title('TRMM 3B42 + ERA-I',fontsize=axes_fontsize)
+    
+    ax.set_xlim(min(subsat_bin_center_obs.min(),subsat_bin_center.min()),
+    max(subsat_bin_center_obs.max(),subsat_bin_center.max()))
+
+    ax.set_ylim(min(cape_bin_center_obs.min(),cape_bin_center.min()),
+    max(cape_bin_center_obs.max(),cape_bin_center.max()))
     
     ax2 = fig.add_subplot(222)
 
@@ -1096,6 +1303,14 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     ax2.contourf(subsat_bin_center,cape_bin_center,np.log10(pdf_model).T)
     ax2.set_xlabel('SUBSAT (K)',fontsize=axes_fontsize)
     ax2.set_title(MODEL_NAME,fontsize=axes_fontsize)
+
+    ax2.set_xlim(min(subsat_bin_center_obs.min(),subsat_bin_center.min()),
+    max(subsat_bin_center_obs.max(),subsat_bin_center.max()))
+
+    ax2.set_ylim(min(cape_bin_center_obs.min(),cape_bin_center.min()),
+    max(cape_bin_center_obs.max(),cape_bin_center.max()))
+    
+
 
     mp.tight_layout()
     mp.savefig(FIG_OBS_DIR+"/"+FIG_OUTPUT_FILENAME+'.pcp_2d_pdf'+'.'+FIG_EXTENSION, bbox_inches="tight")
@@ -1124,7 +1339,6 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
 
     handles, labels = ax.get_legend_handles_labels()
     num_handles=len(handles)
-    print(handles,labels)
     
     leg = ax.legend(handles[0:num_handles], labels[0:num_handles], fontsize=axes_fontsize, bbox_to_anchor=(0.05,0.95), \
                 bbox_transform=ax.transAxes, loc="upper left", borderaxespad=0, labelspacing=0.1, \
@@ -1161,9 +1375,7 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     print("...Completed!")
     print("      2D pdfs saved as "+FIG_OBS_DIR+"/"+FIG_OUTPUT_FILENAME+'.pcp_BL_stats'+'.'+FIG_EXTENSION+"!")
 
-        
-
-# 
+ 
 
 
 

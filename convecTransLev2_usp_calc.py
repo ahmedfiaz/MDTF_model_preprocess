@@ -18,7 +18,9 @@ import glob
 # ======================================================================
 # Model name
 # MODEL_NAME='NASA-GISS'
-MODEL_NAME='SNU.SAM0-UNICON'
+# MODEL_NAME='SNU.SAM0-UNICON'
+# MODEL_NAME='MPI-ESM1'
+MODEL_NAME='BCC_3hr'
 
 START_DATE=2013010106 ## TIME FORMAT: YYYYMMDDHH
 END_DATE=2014123118 
@@ -37,6 +39,12 @@ LEV_VAR="lev"
 PS_VAR="ps"
 A_VAR="a"
 B_VAR="b"
+
+## for MPI-ESM
+# A_VAR="ap"
+# B_VAR="b"
+
+
 TIME_VAR="time"
 LAT_VAR="lat"
 LON_VAR="lon"
@@ -113,10 +121,11 @@ BINT_RANGE_MIN=-1.5 # default=90 (75 for satellite retrieval product)
 # In units of K
 
 CAPE_RANGE_MIN=-40.0
-CAPE_RANGE_MAX=17.0
+# CAPE_RANGE_MAX=17.0
+CAPE_RANGE_MAX=20.0
 CAPE_BIN_WIDTH=1.0
 
-SUBSAT_RANGE_MIN=0.0
+SUBSAT_RANGE_MIN=-1.0
 SUBSAT_RANGE_MAX=42.0
 SUBSAT_BIN_WIDTH=1.0
 
@@ -140,7 +149,9 @@ p_lev_mid=500
 
 # Threshold value defining precipitating events [mm/hr]
 PRECIP_THRESHOLD=0.25
-PRECIP_FACTOR=1e3 ## Factor to convert precip. units to mm/hr
+# PRECIP_FACTOR=1e3 ## Factor to convert precip. units to mm/hr
+PRECIP_FACTOR=36e2 ## Factor to convert precip. units to mm/hr
+
 # ======================================================================
 # END USER SPECIFIED SECTION
 # ======================================================================
@@ -292,6 +303,7 @@ else:
     data["SAVE_PRECIP"]=0
 
 
+
 # Taking care of function arguments for binning
 data["args1"]=[ \
 BINT_BIN_WIDTH, \
@@ -331,8 +343,10 @@ p_lev_mid, \
 # dp, \
 time_idx_delta, \
 data["SAVE_THETAE"], \
+data["MATCH_PRECIP_THETAE"], \
 PREPROCESSING_OUTPUT_DIR, \
 PRECIP_THRESHOLD, \
+PRECIP_FACTOR,\
 data["BIN_OUTPUT_DIR"], \
 data["BIN_OUTPUT_FILENAME"], \
 TIME_VAR, \

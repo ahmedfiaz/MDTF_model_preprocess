@@ -89,12 +89,11 @@ if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
 
     ### Only for CMIP6 models with different output formats between precip
     ### and thetae-based variables ###
-      
-      
-    elif (bin_data["SAVE_PRECIP"]==1) :
+            
+    if (bin_data["SAVE_PRECIP"]==1) :
         print("     Precip-thetae matching and saving required")
         convecTransLev2_extractprecip(bin_data["args3"])
-    
+
     else:
         print("    Pre-processed data available...")
         print("     Now binning...")
