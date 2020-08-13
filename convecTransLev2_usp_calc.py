@@ -17,15 +17,28 @@ import glob
 # START USER SPECIFIED SECTION
 # ======================================================================
 # Model name
+
+# MODEL_NAME='KACE'  #data is in height co-ordinates
+
+# MODEL_NAME='NESM'
+# MODEL_NAME='MRI'
+# MODEL_NAME='MPI-ESM1'
+# MODEL_NAME='MIROC-E2SL'
+# MODEL_NAME='MIROC6'
+# MODEL_NAME='IPSL'
+# MODEL_NAME='GFDL-CM4'
+# MODEL_NAME='F-GOALS' 
+# MODEL_NAME='CNRM-CM6-1-HR' ## issue with a(p) and b(p): these parameters seem correct for first file, but wrong afterward
+# MODEL_NAME='CNRM-CM6-1'
+# MODEL_NAME='ACCESS-ESM1' ### issue with a(p) and b(p), data is possibly in height co-ordinates
+MODEL_NAME='CESM' ## issue with the date which begins from 0001-01-01
 # MODEL_NAME='NASA-GISS'
 # MODEL_NAME='SNU.SAM0-UNICON'
 # MODEL_NAME='MPI-ESM1'
-MODEL_NAME='BCC_3hr'
+# MODEL_NAME='BCC_3hr'
 
-START_DATE=2013010106 ## TIME FORMAT: YYYYMMDDHH
-END_DATE=2014123118 
-PARENT_DATE=1850010100
-TIME_STEP='days'
+START_DATE='2013010106' ## TIME FORMAT: YYYYMMDDHH
+END_DATE='2013013118' 
 # MODEL=os.environ["CASENAME"]#os.environ["model"] # will show up in the figure
 # Model output directory
 MODEL_OUTPUT_DIR='/scratch/neelin/CMIP6/'+MODEL_NAME+'/' # where original model data are located
@@ -40,9 +53,14 @@ PS_VAR="ps"
 A_VAR="a"
 B_VAR="b"
 
-## for MPI-ESM
+## for F-GOALS ##
+# A_VAR='ptop'
+
+## for MPI-ESM, CNRM-CM6, IPSL, MPI-ESM1
 # A_VAR="ap"
-# B_VAR="b"
+
+## for IPSL
+# LEV_VAR="presnivs" 
 
 
 TIME_VAR="time"
@@ -121,12 +139,18 @@ BINT_RANGE_MIN=-1.5 # default=90 (75 for satellite retrieval product)
 # In units of K
 
 CAPE_RANGE_MIN=-40.0
-# CAPE_RANGE_MAX=17.0
 CAPE_RANGE_MAX=20.0
+
+CAPE_RANGE_MIN=-100.0
+CAPE_RANGE_MAX=-20.0
 CAPE_BIN_WIDTH=1.0
 
-SUBSAT_RANGE_MIN=-1.0
-SUBSAT_RANGE_MAX=42.0
+# SUBSAT_RANGE_MIN=-1.0
+# SUBSAT_RANGE_MAX=42.0
+
+SUBSAT_RANGE_MIN=25.0
+SUBSAT_RANGE_MAX=100.0
+
 SUBSAT_BIN_WIDTH=1.0
 
 # Column-integrated Saturation Specific Humidity qsat_int [mm] range & bin-width
@@ -165,8 +189,6 @@ data={}
 data["MODEL"]=MODEL_NAME
 data["START_DATE"]=START_DATE
 data["END_DATE"]=END_DATE
-data["PARENT_DATE"]=PARENT_DATE
-data["TIME_STEP"]=TIME_STEP
 data["MODEL_OUTPUT_DIR"]=MODEL_OUTPUT_DIR
 data["PREPROCESSING_OUTPUT_DIR"]=PREPROCESSING_OUTPUT_DIR
 
@@ -281,6 +303,10 @@ prc_save_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+PRC_VAR+"*"))
 data["thetae_list"]=thetae_list
 data["pr_save_list"]=pr_save_list
 
+
+if len(data["ta_list"])==0:
+        exit('     No input files found...')
+
 if (len(data["thetae_list"])<len(data["ta_list"])): 
     data["PREPROCESS_THETAE"]=1
     data["SAVE_THETAE"]=1
@@ -318,8 +344,6 @@ SUBSAT_BIN_WIDTH, \
 NUMBER_OF_REGIONS, \
 START_DATE,\
 END_DATE,\
-PARENT_DATE,\
-TIME_STEP,\
 pr_list, \
 PR_VAR, \
 prc_list, \
@@ -369,8 +393,6 @@ SUBSAT_BIN_WIDTH, \
 NUMBER_OF_REGIONS, \
 START_DATE,\
 END_DATE,\
-PARENT_DATE,\
-TIME_STEP,\
 pr_list, \
 PR_VAR, \
 prc_list, \

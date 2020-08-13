@@ -28,7 +28,8 @@ import scipy.io
 from scipy.interpolate import NearestNDInterpolator
 from netCDF4 import Dataset
 from cftime import num2pydate
-
+import faulthandler
+faulthandler.enable()
 
 from vert_cython import find_closest_index_2D, compute_layer_thetae
 import matplotlib
@@ -40,6 +41,7 @@ import networkx
 import datetime as dt
 from sys import exit, stdout
 import seaborn as sns
+import xarray as xr
 
 import matplotlib.rcsetup as rcsetup
 
@@ -51,7 +53,6 @@ import matplotlib.rcsetup as rcsetup
 # exit()
 
 
-
 # ======================================================================
 # convecTransLev2_binThetae
 #  takes arguments and bins by subsat+ cape & bint
@@ -60,12 +61,14 @@ import matplotlib.rcsetup as rcsetup
 def convecTransLev2_binThetae(lon_idx, REGION, PRECIP_THRESHOLD, NUMBER_CAPE_BIN, NUMBER_SUBSAT_BIN, 
 NUMBER_BINT_BIN, CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, pe, q0, q1, q2, qe):
  
+ 
     for lat_idx in np.arange(SUBSAT.shape[1]):
         subsat_idx=SUBSAT[:,lat_idx,lon_idx]
         cape_idx=CAPE[:,lat_idx,lon_idx]
         bint_idx=BINT[:,lat_idx,lon_idx]
         rain=RAIN[:,lat_idx,lon_idx]
         reg=REGION[lon_idx,lat_idx]
+        
         if reg>0:
             for time_idx in np.arange(SUBSAT.shape[0]):
                 if (cape_idx[time_idx]<NUMBER_CAPE_BIN and cape_idx[time_idx]>=0 
@@ -75,24 +78,19 @@ NUMBER_BINT_BIN, CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, pe, q0, q1, q2, qe):
                     p1[subsat_idx[time_idx],cape_idx[time_idx]]+=rain[time_idx]
                     p2[subsat_idx[time_idx],cape_idx[time_idx]]+=rain[time_idx]**2
                     
+                    if (rain[time_idx]>PRECIP_THRESHOLD):
+                        pe[subsat_idx[time_idx],cape_idx[time_idx]]+=1
+
+                    
                 if (bint_idx[time_idx]<NUMBER_BINT_BIN and bint_idx[time_idx]>=0
                 and np.isfinite(rain[time_idx])):
                     q0[bint_idx[time_idx]]+=1
                     q1[bint_idx[time_idx]]+=rain[time_idx]
                     q2[bint_idx[time_idx]]+=rain[time_idx]**2
-                
-                ### Count precipitating points ###
-                if (rain[time_idx]>PRECIP_THRESHOLD):
-                    pe[subsat_idx[time_idx],cape_idx[time_idx]]+=1
-                    qe[bint_idx[time_idx]]+=1
+                    if (rain[time_idx]>PRECIP_THRESHOLD):
+                        qe[bint_idx[time_idx]]+=1
 
                                 
-#                 if (rain[time_idx]>PRECIP_THRESHOLD):
-#                     pe[subsat_idx[time_idx],cape_idx[time_idx]]+=1
-#                 if (subsat_idx[time_idx]+1>(0.6/SUBSAT_BIN_WIDTH)*qsat_int[time_idx]):
-#                     q0[cape_idx[time_idx]]+=1
-#                     q1[cape_idx[time_idx]]+=qsat_int[time_idx]
-
 
 # ======================================================================
 # convecTransBasic_binTave
@@ -206,6 +204,17 @@ def convecTransLev2_calcqT_ratio(Z,counts,cape_bin_center,subsat_bin_center):
     return ratio
 
 
+def nearest(items, pivot,greater=True):
+    '''
+    Simple function adapted from SO. 
+    Returns the closest date to given date (pivot).
+    Keyword greater returns closest date greater/equal tp pivot,
+    setting it to False returns closest date less/equal than pivot
+    '''
+    if greater:
+        return min(items, key=lambda x: x-pivot if x>=pivot else x-dt.datetime(1,1,1)) 
+    else:
+        return min(items, key=lambda x: pivot-x if x<=pivot else pivot-dt.datetime(1,1,1))    
 
 
 ### Compute the saturation vapor pressure for a given temperature ###
@@ -285,11 +294,6 @@ def generate_region_mask(region_mask_filename, model_netcdf_filename, lat_var, l
 
     return REGION
 
-    # Use the following 3 lines for plotting the resulting region mask
-    #REGION=np.reshape(REGION.astype(int),(-1,lat.size))
-    #mp.contourf(lon.squeeze(), lat.squeeze(), REGION.T)
-    #mp.axes().set_aspect('equal')
-
 # ======================================================================
 # convecTransLev2_calcthetae_ML
 #  takes in 3D tropospheric temperature and specific humidity fields on model levels, 
@@ -299,8 +303,8 @@ def generate_region_mask(region_mask_filename, model_netcdf_filename, lat_var, l
 
 
 def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filename, HUS_VAR,\
-                        LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL, p_lev_mid, time_idx_delta,\
-                        START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
+                        LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL_NAME, p_lev_mid, time_idx_delta,\
+                        START_DATE, END_DATE,\
                         SAVE_THETAE,PREPROCESSING_OUTPUT_DIR, THETAE_OUT,\
                         THETAE_LT_VAR,THETAE_SAT_LT_VAR,THETAE_BL_VAR,\
                         TIME_VAR,LAT_VAR,LON_VAR):
@@ -308,51 +312,151 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
 
     strt_dt=dt.datetime.strptime(str(START_DATE),"%Y%m%d%H")
     end_dt=dt.datetime.strptime(str(END_DATE),"%Y%m%d%H")
-    pt_date=dt.datetime.strptime(str(PARENT_DATE),"%Y%m%d%H")
 
-    ### LOAD T & q ###
-
-    ta_netcdf=Dataset(ta_netcdf_filename,"r")
-    time=np.asarray(ta_netcdf.variables[TIME_VAR][:],dtype="float")
-    lev=np.asarray(ta_netcdf.variables[LEV_VAR][:],dtype="float")
-    a=np.asarray(ta_netcdf.variables[A_VAR][:],dtype="float")
-    b=np.asarray(ta_netcdf.variables[B_VAR][:],dtype="float")
-    lat=np.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
-    lon=np.asarray(ta_netcdf.variables[LON_VAR][:],dtype="float")
+    ### LOAD temp. and q datasets ###
     
-    ## Take latitudinal slice
-    ilatx=np.where(np.logical_and(lat>=-20.0,lat<=20.0))[0]
-    lat=lat[ilatx]
+    ta_ds=xr.open_mfdataset(ta_netcdf_filename)
+    hus_ds=xr.open_mfdataset(hus_netcdf_filename)
+    
+    
+    ### rename dimensions to correct non-standard names
+    LAT_VAR_NEW='lat'
+    LON_VAR_NEW='lon'
+    TIME_VAR_NEW='time'
+    LEV_VAR_NEW='lev'
+    
+    ta_ds.rename({TIME_VAR:TIME_VAR_NEW,LAT_VAR:LAT_VAR_NEW,LON_VAR:LON_VAR_NEW,LEV_VAR:LEV_VAR_NEW})
+    hus_ds.rename({TIME_VAR:TIME_VAR_NEW,LAT_VAR:LAT_VAR_NEW,LON_VAR:LON_VAR_NEW,LEV_VAR:LEV_VAR_NEW})
+    
+    ### set time and latitudinal slices for extraction ###
+    time_slice=slice(dt.datetime.strptime(START_DATE,'%Y%m%d%H'),
+    dt.datetime.strptime(END_DATE,'%Y%m%d%H'))
+    
+    lat_slice=slice(-20,20) ## Set latitudinal slice
+    
+    ### Ensure that start and end dates span more than 1 day.
+    if (time_slice.stop-time_slice.start).days<1:
+        exit('     Please set time range greater than 1 day. Exiting now')
 
-    ps=np.asarray(ta_netcdf.variables[PS_VAR][:,ilatx,:],dtype="float")
-    ta=np.asarray(ta_netcdf.variables[TA_VAR][:,:,ilatx,:],dtype="float")
-    time_units=str([(j.units) for i,j in ta_netcdf.variables.items() if i=='time'][0])
-    ps_units=str([(j.units) for i,j in ta_netcdf.variables.items() if i==PS_VAR][0])
-    ta_netcdf.close()
+    ### Ensure that times are in datetime format. ###
+    try:
+        datetimeindex = ta_ds.indexes['time'].to_datetimeindex()
+        ta_ds['time'] = datetimeindex
         
-    dates_ta=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]
-    dates_ta_max,dates_ta_min=max(dates_ta),min(dates_ta)
-    dates_indx=np.asarray([i for (i,idt) in enumerate(dates_ta) if (idt<dates_ta_max and idt>dates_ta_min)])
+        datetimeindex = hus_ds.indexes['time'].to_datetimeindex()
+        hus_ds['time'] = datetimeindex
+        
+    except:
+        pass
+
+    ### select subset ###
+    ta_ds_subset=ta_ds.sel(time=time_slice,lat=lat_slice)
+    hus_ds_subset=hus_ds.sel(time=time_slice,lat=lat_slice)
+     
+    print('LOADING ARRAYS')
+    ### Load arrays into memory ###
+    
+#     time_arr=ta_ds_subset.[TIME_VAR]
+    lev=ta_ds_subset[LEV_VAR]
+    a=ta_ds_subset[A_VAR]
+    b=ta_ds_subset[B_VAR] ## comment this if using F-GOALS
+    lat=ta_ds_subset['lat']
+    lon=ta_ds_subset[LON_VAR]
+    ps=ta_ds_subset[PS_VAR]
+    ta=ta_ds_subset[TA_VAR]
+    hus=hus_ds_subset[HUS_VAR]
+    
+    assert(ta_ds_subset['time'].size==hus_ds_subset['time'].size)
+    
+    ### READ SP.HUMIDITY ### 
+
+#     hus_netcdf=Dataset(hus_netcdf_filename,"r")
+#     hus=np.asarray(hus_netcdf.variables[HUS_VAR][:,:,ilatx,:],dtype="float")
+#     time_arr=hus_netcdf.variables[TIME_VAR]
+#     time=np.asarray(time_arr[:],dtype="float")
+#     time_units=time_arr.units
+
+    
+#     ps_units=str(ta_netcdf[PS_VAR].units)
+#     ta_netcdf.close()
+
+
+#     ta_netcdf=Dataset(ta_netcdf_filename,"r")
+#     time_arr=ta_netcdf.variables[TIME_VAR]
+#     time=np.asarray(time_arr[:],dtype="float")
+#     time_units=time_arr.units
+#     lev=np.asarray(ta_netcdf.variables[LEV_VAR][:],dtype="float")
+#     a=np.asarray(ta_netcdf.variables[A_VAR][:],dtype="float")
+#     b=np.asarray(ta_netcdf.variables[B_VAR][:],dtype="float")  ## comment this if using F-GOALS
+#     lat=np.asarray(ta_netcdf.variables[LAT_VAR][:],dtype="float")
+#     lon=np.asarray(ta_netcdf.variables[LON_VAR][:],dtype="float")
+    
+    # if MODEL_NAME in ['CESM']:
+#     
+#         ### CESM requires special handling because of trailing zeros in date ##
+#         strt_date=dt.datetime.strptime(time_units.split('since')[-1].lstrip(" "),'%Y-%m-%d %H:%M:%S')
+#         time_res=time_units.split('since')[0].strip(" ")
+#         dates_ta=[strt_date+dt.timedelta(**{time_res: i}) for i in time]
+# 
+#     else:
+#         
+#         dates_ta=num2pydate(time, units=time_units)    
+#         dates_ta_max,dates_ta_min=max(dates_ta),min(dates_ta)
+#         dates_indx=np.asarray([i for (i,idt) in enumerate(dates_ta) if (idt<dates_ta_max and idt>dates_ta_min)])
+#     
+    
+    ###  Take latitudinal slice
+#     ilatx=np.where(np.logical_and(lat>=-20.0,lat<=20.0))[0]
+#     lat=lat[ilatx]
+
+#     ps=np.asarray(ta_netcdf.variables[PS_VAR][:,ilatx,:],dtype="float")
+#     ta=np.asarray(ta_netcdf.variables[TA_VAR][:,:,ilatx,:],dtype="float")
+#     ps_units=str(ta_netcdf.variables[PS_VAR].units)
+#     ta_netcdf.close()
+    
     
     ### READ SP.HUMIDITY ### 
         
-    hus_netcdf=Dataset(hus_netcdf_filename,"r")
-    hus=np.asarray(hus_netcdf.variables[HUS_VAR][:,:,ilatx,:],dtype="float")
-    time=np.asarray(hus_netcdf.variables[TIME_VAR][:],dtype="float")
-    hus_netcdf.close()
+#     hus_netcdf=Dataset(hus_netcdf_filename,"r")
+#     hus=np.asarray(hus_netcdf.variables[HUS_VAR][:,:,ilatx,:],dtype="float")
+#     time_arr=hus_netcdf.variables[TIME_VAR]
+#     time=np.asarray(time_arr[:],dtype="float")
+#     time_units=time_arr.units
+    
+    
+#     if MODEL_NAME in ['CESM']:
+#         ### CESM requires special handling because of trailing zeros in date ##
+#         strt_date=dt.datetime.strptime(time_units.split('since')[-1].lstrip(" "),'%Y-%m-%d %H:%M:%S')
+#         time_res=time_units.split('since')[0].strip(" ")
+#         dates_hus=[strt_date+dt.timedelta(**{time_res: i}) for i in time]
+# 
+#     else:
+#         dates_hus=num2pydate(time, units=time_units)   
+#          
+#     hus_netcdf.close()
 
-    dates_hus=[pt_date+dt.timedelta(**{TIME_STEP:ti}) for ti in time]    
-    assert(len(dates_ta)==len(dates_hus))
+#     assert(len(dates_ta)==len(dates_hus))
     
     ### CREATE PRESSURE LEVELS ###
-    pres=b[None,:,None,None]*ps[:,None,...]+a[None,:,None,None]
+    
+###   For models with CMOR convention
+#     if MODEL_NAME in ['']:
+#         pres=a+lev[None,:,None,None]*(ps[:,None,:,:]-a)
+#     else:
 
+    ### Create pressure data ###
+    # print('Testing lazy evaluation')
+    pres=b*ps+a
+    ## re-order dimensions to match other arrays ###
+#     pres=pres.transpose('time',LEV_VAR,'lat',LON_VAR)
+
+#     pres=b[None,:,None,None]*ps[:,None,...]+a[None,:,None,None]
     ### Define the layers ###    
     pbl_top=ps-100e2 ## The sub-cloud layer is 100 mb thick ##
     low_top=np.zeros_like(ps)
     low_top[:]=500e2  # the mid-troposphere is fixed at 500 mb
 
-    pbl_top=np.float_(pbl_top.flatten())
+    pbl_top=np.float_(pbl_top.values.flatten()) ### overwriting pbl top xarray with numpy array
     low_top=np.float_(low_top.flatten())
 
     ### Snippet to find the closet pressure level to pbl_top and
@@ -363,25 +467,42 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     ### Check if pressure array is descending ###
     ### since this is an implicit assumption
     
-    if (np.all(np.diff(pres,axis=1)<0)):
+#     pres_slice=pres.isel[:,time=0,]
+
+    print('LOADING VALUES')
+    ta=ta.transpose(LEV_VAR,'time','lat',LON_VAR)
+    hus=hus.transpose(LEV_VAR,'time','lat',LON_VAR)
+
+    pres=pres.values   
+    ta=np.asarray(ta.values,dtype='float')
+    hus=np.asarray(hus.values,dtype='float')
+
+    if (np.all(np.diff(pres,axis=0)<0)):
         print('     pressure levels strictly decreasing')
-    elif (np.all(np.diff(pres,axis=1)>0)):
+    elif (np.all(np.diff(pres,axis=0)>0)):
         print('     pressure levels strictly increasing')
         print('     reversing the pressure dimension')
-        pres=pres[:,::-1,:,:]
-        ta=ta[:,::-1,:,:]
-        hus=hus[:,::-1,:,:]
+        pres=pres[::-1,:,:,:]
+        ta=ta[::-1,:,:,:]
+        hus=hus[::-1,:,:,:]
     else:
         exit('     Check pressure level ordering. Exiting now..')
+            
+#     lev=np.swapaxes(pres,0,1)
+#     lev=lev.reshape(*lev.shape[:1],-1)
+    lev=pres.reshape(*lev.shape[:1],-1)
     
-    lev=np.swapaxes(pres,0,1)
-    lev=lev.reshape(*lev.shape[:1],-1)
-    
-    ta_flat=np.swapaxes(ta,0,1)
-    ta_flat=ta_flat.reshape(*ta_flat.shape[:1],-1)
+    print(ta.shape,hus.shape)
+   
+#     ta_flat=np.swapaxes(ta,0,1)
+#     ta_flat=ta.reshape(*ta_flat.shape[:1],-1)
+    ta_flat=ta.reshape(*ta.shape[:1],-1)
 
-    hus_flat=np.swapaxes(hus,0,1)
-    hus_flat=hus_flat.reshape(*hus_flat.shape[:1],-1)
+#     hus_flat=np.swapaxes(hus,0,1)
+#     hus_flat=hus.reshape(*hus_flat.shape[:1],-1)
+    hus_flat=hus.reshape(*hus.shape[:1],-1)
+
+    print(ta_flat.shape,hus_flat.shape,lev.shape)
 
     pbl_ind=np.zeros(pbl_top.size,dtype=np.int64)
     low_ind=np.zeros(low_top.size,dtype=np.int64)
@@ -390,7 +511,7 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     find_closest_index_2D(low_top,lev,low_ind)
     
     stdout.flush()
-
+    
     
     thetae_bl=np.zeros_like(pbl_top)
     thetae_lt=np.zeros_like(pbl_top)
@@ -404,11 +525,23 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     thetae_bl[thetae_bl==0]=np.nan
     thetae_lt[thetae_lt==0]=np.nan
     thetae_sat_lt[thetae_sat_lt==0]=np.nan
-
+    
+#     print('Here')
+    CAPE=340.*(thetae_bl-thetae_sat_lt)/thetae_sat_lt
+    SUBSAT=340.*(thetae_sat_lt-thetae_lt)/thetae_sat_lt
+    print(np.nanmax(CAPE),np.nanmin(CAPE))
+    print(np.nanmax(SUBSAT),np.nanmin(SUBSAT))
+    print(np.nanmax(thetae_bl),np.nanmin(thetae_bl))
+    print(np.nanmax(thetae_lt),np.nanmin(thetae_lt))
+    print(np.nanmax(thetae_sat_lt),np.nanmin(thetae_sat_lt))
+    
+    
     ### Reshape all arrays ###
     thetae_bl=thetae_bl.reshape(ps.shape)
     thetae_lt=thetae_lt.reshape(ps.shape)
     thetae_sat_lt=thetae_sat_lt.reshape(ps.shape)
+    
+    print(thetae_bl.shape,thetae_lt.shape,thetae_sat_lt.shape)
     
     print('      '+ta_netcdf_filename+" & "+hus_netcdf_filename+" pre-processed!")
 
@@ -417,12 +550,49 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
 #         Create PREPROCESSING_OUTPUT_DIR
         os.system("mkdir -p "+PREPROCESSING_OUTPUT_DIR)
 
+        ## Create xarray data set ###
+        
+#         data_set=xr.Dataset(data_vars={"thetae_bl":(ds_pr['pr'].dims, pr_vals),
+#                               "ta":(ds_ta['ta'].dims, ta_vals)},
+#                    coords=ds_ta['ta'].coords)
+#         data_set.attrs=ds_ta.attrs
+#         data_set.pr.attrs=ds_pr['pr'].attrs
+#         data_set.ta.attrs=ds_ta['ta'].attrs
+#         data_set
+#         data_set.to_netcdf('sample.netcdf',mode='w')
+
+#         ds_ta['ta'].isel(lev=0).coords
+
+        data_set=xr.Dataset(data_vars={"thetae_bl":(ta_ds_subset[TA_VAR].isel(lev=0).dims, thetae_bl),
+                              "thetae_lt":(ta_ds_subset[TA_VAR].isel(lev=0).dims, thetae_lt),
+                              "thetae_sat_lt":(ta_ds_subset[TA_VAR].isel(lev=0).dims, thetae_sat_lt)},
+                   coords=ta_ds_subset[TA_VAR].isel(lev=0).coords)
+        data_set.thetae_bl.attrs['long_name']="theta_e averaged in the BL (100 hPa above surface)"
+        data_set.thetae_lt.attrs['long_name']="theta_e averaged in the LFT (100 hPa above surface to 500 hPa)"
+        data_set.thetae_sat_lt.attrs['long_name']="theta_e_sat averaged in the LFT (100 hPa above surface to 500 hPa)"
+
+        data_set.thetae_bl.attrs['units']="K"
+        data_set.thetae_lt.attrs['units']="K"
+        data_set.thetae_sat_lt.attrs['units']="K"
+        
+        data_set.attrs['source']="Convective Onset Statistics Diagnostic Package \
+        - as part of the NOAA Model Diagnostic Task Force (MDTF) effort"
+
+#         data_set.attrs=ds_ta.attrs
+#         data_set.pr.attrs=ds_pr['pr'].attrs
+#         data_set.ta.attrs=ds_ta['ta'].attrs
+#         data_set
+        data_set.to_netcdf('sample.netcdf',mode='w')
+        exit()
+        
+
+
 #         Get necessary coordinates/variables for netCDF files
 
         thetae_output_filename=PREPROCESSING_OUTPUT_DIR+ta_netcdf_filename.split('/')[-1].replace(TA_VAR,THETAE_OUT)
         thetae_output_netcdf=Dataset(thetae_output_filename,"w",format="NETCDF4",zlib='True')
         thetae_output_netcdf.description="Theta_e averaged over the BL (100 hPa above surface) "\
-                                    +"Theta_e and Theta_e_sat averaged over the LT (100 hPa above surface to 500 hPa) for "+MODEL
+                                    +"Theta_e and Theta_e_sat averaged over the LT (100 hPa above surface to 500 hPa) for "+MODEL_NAME
         thetae_output_netcdf.source="Convective Onset Statistics Diagnostic Package \
         - as part of the NOAA Model Diagnostic Task Force (MDTF) effort"
 
@@ -464,13 +634,12 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     
     
 def convecTransLev2_matchpcpta(ta_netcdf_filename, TA_VAR, pr_list, PR_VAR,\
-    prc_list, PRC_VAR, MODEL, time_idx_delta,\
-    START_DATE, END_DATE, PARENT_DATE, TIME_STEP, PRECIP_FACTOR, SAVE_PRECIP,\
+    prc_list, PRC_VAR, MODEL_NAME, time_idx_delta,\
+    START_DATE, END_DATE, PRECIP_FACTOR, SAVE_PRECIP,\
     PREPROCESSING_OUTPUT_DIR, TIME_VAR,LAT_VAR,LON_VAR):
     
     strt_dt=dt.datetime.strptime(str(START_DATE),"%Y%m%d%H")
     end_dt=dt.datetime.strptime(str(END_DATE),"%Y%m%d%H")
-    pt_date=dt.datetime.strptime(str(PARENT_DATE),"%Y%m%d%H")
 
     ### LOAD T & q ###
 
@@ -478,15 +647,33 @@ def convecTransLev2_matchpcpta(ta_netcdf_filename, TA_VAR, pr_list, PR_VAR,\
     time_arr=ta_netcdf.variables[TIME_VAR]
     time=np.asarray(time_arr[:],dtype="float")
     time_units=time_arr.units
-    dates_ta=num2pydate(time, units=time_units)    
+
+    if MODEL_NAME in ['CESM']:
+    
+        ### CESM requires special handling because of trailing zeros in date ##
+        strt_date=dt.datetime.strptime(time_units.split('since')[-1].lstrip(" "),'%Y-%m-%d %H:%M:%S')
+        time_res=time_units.split('since')[0].strip(" ")
+        dates_ta=[strt_date+dt.timedelta(**{time_res: i}) for i in time]
+    else:    
+    
+        dates_ta=num2pydate(time, units=time_units)    
     ta_netcdf.close()
         
     for i in pr_list:
     
         pr_netcdf=Dataset(i,"r")
-        time_arr=ta_netcdf.variables[TIME_VAR]
+        time_arr=pr_netcdf.variables[TIME_VAR]
         time_pr=np.asarray(time_arr[:],dtype="float")
-        dates_pr=num2pydate(time_pr, units=time_arr.units)    
+        
+        if MODEL_NAME in ['CESM']:
+            ### CESM requires special handling because of trailing zeros in date ##
+            strt_date=dt.datetime.strptime(time_arr.units.split('since')[-1].lstrip(" "),'%Y-%m-%d %H:%M:%S')
+            time_res=time_arr.units.split('since')[0].strip(" ")
+            dates_pr=[strt_date+dt.timedelta(**{time_res: i}) for i in time_pr]        
+        else:
+            dates_pr=num2pydate(time_pr, units=time_arr.units)    
+        
+        
         lat=np.asarray(pr_netcdf.variables[LAT_VAR][:],dtype="float")
         lon=np.asarray(pr_netcdf.variables[LON_VAR][:],dtype="float")
     
@@ -494,7 +681,7 @@ def convecTransLev2_matchpcpta(ta_netcdf_filename, TA_VAR, pr_list, PR_VAR,\
         ilatx=np.where(np.logical_and(lat>=-20.0,lat<=20.0))[0]
         lat=lat[ilatx]
 
-        pr_var=np.asarray(pr_netcdf.variables[PR_VAR][:,ilatx,:],dtype="float")*PRECIP_FACTOR
+        pr_var=np.squeeze(np.asarray(pr_netcdf.variables[PR_VAR][:,ilatx,:],dtype="float"))*PRECIP_FACTOR
         pr_units=pr_netcdf.variables[PR_VAR].units
 
         ### Extract time of closest approach ###
@@ -504,81 +691,81 @@ def convecTransLev2_matchpcpta(ta_netcdf_filename, TA_VAR, pr_list, PR_VAR,\
         time_ind=([j for j,k in enumerate(dates_pr) for l in dates_ta 
         if np.logical_and((k-l).total_seconds()/3600.<=1.5,(k-l).total_seconds()/3600.>0.0)])
 
-        time_ind_new=np.zeros((max(len(dates_ta),len(time_ind))))
-        ### time_ind_new ensures that any mismatch is size is accounted for
-        ### for now it specifically targets the case where time.size-len(time_ind)=1 
-        ### We can easily generalize this case to time.size-len(time_ind)=n
+        if len(time_ind)>0:
+
+            time_ind_new=np.zeros((max(len(dates_ta),len(time_ind))))
+            ### time_ind_new ensures that any mismatch is size is accounted for
+            ### for now it specifically targets the case where time.size-len(time_ind)=1 
+            ### We can easily generalize this case to time.size-len(time_ind)=n
         
-        diff=len(dates_ta)-len(time_ind)
+            diff=len(dates_ta)-len(time_ind)
         
-        try:
-            assert len(time_ind)==len(dates_ta)
-            time_ind_new[:]=time_ind
-        except:
-            time_ind_new[:-diff]=time_ind
-            time_ind_new[-(diff+1):-1]=np.nan 
+            try:
+                assert len(time_ind)==len(dates_ta)
+                time_ind_new[:]=time_ind
+            except:
+                time_ind_new[:-diff]=time_ind
+                time_ind_new[-(diff+1):-1]=np.nan 
                
-        time_ind_new_fin=(np.int_(time_ind_new[np.isfinite(time_ind_new)]))
-        time_ind_new_nan=np.isnan(np.int_(time_ind_new))
+            time_ind_new_fin=(np.int_(time_ind_new[np.isfinite(time_ind_new)]))
+            time_ind_new_nan=np.isnan(np.int_(time_ind_new))
+            ### Assuming that time is index 0
+            pr_var_temp=np.zeros((time_ind_new.size,pr_var.shape[1],pr_var.shape[2]))
         
+            assert diff>=0
+        
+            if diff==0:
+                pr_var_temp[:,...]=pr_var[time_ind_new_fin,...]        
+            else:               
+                pr_var_temp[:-diff,...]=pr_var[time_ind_new_fin,...]
+                pr_var_temp[-(diff+1):-1,...]=np.nan
     
-        ### Assuming that time is index 0
-        pr_var_temp=np.zeros((time_ind_new.size,pr_var.shape[1],pr_var.shape[2]))
-        
-        assert diff>=0
-        
-        if diff==0:
-            pr_var_temp[:,...]=pr_var[time_ind_new_fin,...]        
-        else:               
-            pr_var_temp[:-diff,...]=pr_var[time_ind_new_fin,...]
-            pr_var_temp[-(diff+1):-1,...]=np.nan
-    
-        pr_netcdf.close()
+            pr_netcdf.close()
                  
-        if SAVE_PRECIP==1:
+            if SAVE_PRECIP==1:
 
-    #         Create PREPROCESSING_OUTPUT_DIR
-            os.system("mkdir -p "+PREPROCESSING_OUTPUT_DIR)
+        #         Create PREPROCESSING_OUTPUT_DIR
+                os.system("mkdir -p "+PREPROCESSING_OUTPUT_DIR)
 
-    #        Get necessary coordinates/variables for netCDF files
+        #        Get necessary coordinates/variables for netCDF files
 
-            pr_filename=PREPROCESSING_OUTPUT_DIR+ta_netcdf_filename.split('/')[-1].replace(TA_VAR,PR_VAR)
+                pr_filename=PREPROCESSING_OUTPUT_DIR+ta_netcdf_filename.split('/')[-1].replace(TA_VAR,PR_VAR)
             
-            pr_output_netcdf=Dataset(pr_filename,"w",format="NETCDF4",zlib='True')
-            pr_output_netcdf.description="Precipitation extracted and matched to the nearest"\
-                                        +"thermodynamic variable"+MODEL
-            pr_output_netcdf.source="Convective Onset Statistics Diagnostic Package \
-            - as part of the NOAA Model Diagnostic Task Force (MDTF) effort"
+                pr_output_netcdf=Dataset(pr_filename,"w",format="NETCDF4",zlib='True')
+                pr_output_netcdf.description="Precipitation extracted and matched to the nearest"\
+                                            +"thermodynamic variable"+MODEL_NAME
+                pr_output_netcdf.source="Convective Onset Statistics Diagnostic Package \
+                - as part of the NOAA Model Diagnostic Task Force (MDTF) effort"
 
-            lon_dim=pr_output_netcdf.createDimension(LON_VAR,len(lon))
-            lon_val=pr_output_netcdf.createVariable(LON_VAR,np.float64,(LON_VAR,))
-            lon_val.units="degree"
-            lon_val[:]=lon
+                lon_dim=pr_output_netcdf.createDimension(LON_VAR,len(lon))
+                lon_val=pr_output_netcdf.createVariable(LON_VAR,np.float64,(LON_VAR,))
+                lon_val.units="degree"
+                lon_val[:]=lon
 
-            lat_dim=pr_output_netcdf.createDimension(LAT_VAR,len(lat))
-            lat_val=pr_output_netcdf.createVariable(LAT_VAR,np.float64,(LAT_VAR,))
-            lat_val.units="degree_north"
-            lat_val[:]=lat
+                lat_dim=pr_output_netcdf.createDimension(LAT_VAR,len(lat))
+                lat_val=pr_output_netcdf.createVariable(LAT_VAR,np.float64,(LAT_VAR,))
+                lat_val.units="degree_north"
+                lat_val[:]=lat
 
-            time_dim=pr_output_netcdf.createDimension(TIME_VAR,None)
-            time_val=pr_output_netcdf.createVariable(TIME_VAR,np.float64,(TIME_VAR,))
-            time_val.units=time_units
-            time_val[:]=time
+                time_dim=pr_output_netcdf.createDimension(TIME_VAR,None)
+                time_val=pr_output_netcdf.createVariable(TIME_VAR,np.float64,(TIME_VAR,))
+                time_val.units=time_units
+                time_val[:]=time
 
-            pr_val=pr_output_netcdf.createVariable(PR_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
-            pr_val.units=pr_units
-            pr_val[:]=pr_var_temp
-#             prc_val=prc_output_netcdf.createVariable(PR_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
-#             prc_val.units="mm/hr"
-#             prc_val[:]=prc_var_temp
+                pr_val=pr_output_netcdf.createVariable(PR_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
+                pr_val.units=pr_units
+                pr_val[:]=pr_var_temp
+    #             prc_val=prc_output_netcdf.createVariable(PR_VAR,np.float64,(TIME_VAR,LAT_VAR,LON_VAR))
+    #             prc_val.units="mm/hr"
+    #             prc_val[:]=prc_var_temp
 
-            pr_output_netcdf.close()
+                pr_output_netcdf.close()
 
-            print('      '+pr_filename+" saved!")
+                print('      '+pr_filename+" saved!")
 
         
         
-        print(' Precip time series matched to thermo time series')
+            print(' Precip time series matched to thermo time series')
         
         
     
@@ -604,8 +791,6 @@ def convecTransLev2_preprocess(*argsv):
     NUMBER_OF_REGIONS,\
     START_DATE,\
     END_DATE,\
-    PARENT_DATE,\
-    TIME_STEP,\
     pr_list,\
     PR_VAR,\
     prc_list,\
@@ -624,7 +809,7 @@ def convecTransLev2_preprocess(*argsv):
     PS_VAR,\
     A_VAR,\
     B_VAR,\
-    MODEL,\
+    MODEL_NAME,\
     p_lev_mid,\
     time_idx_delta,\
     SAVE_THETAE,\
@@ -642,9 +827,9 @@ def convecTransLev2_preprocess(*argsv):
     for li in np.arange(len(ta_list)):
         print("     pre-processing "+ta_list[li])
         convecTransLev2_calcthetae_ML(ta_list[li], TA_VAR, hus_list[li], HUS_VAR,\
-                            LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL, p_lev_mid, time_idx_delta,\
-                            START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
-                            SAVE_THETAE, PREPROCESSING_OUTPUT_DIR,THETAE_OUT,\
+                            LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL_NAME, p_lev_mid, time_idx_delta,\
+                            START_DATE, END_DATE, \
+                            SAVE_THETAE, PREPROCESSING_OUTPUT_DIR, THETAE_OUT,\
                             LFT_THETAE_VAR,LFT_THETAE_SAT_VAR,BL_THETAE_VAR,\
                             TIME_VAR,LAT_VAR,LON_VAR)
     
@@ -665,8 +850,6 @@ def convecTransLev2_extractprecip(*argsv):
     NUMBER_OF_REGIONS,\
     START_DATE,\
     END_DATE,\
-    PARENT_DATE,\
-    TIME_STEP,\
     pr_list,\
     PR_VAR,\
     prc_list,\
@@ -685,7 +868,7 @@ def convecTransLev2_extractprecip(*argsv):
     PS_VAR,\
     A_VAR,\
     B_VAR,\
-    MODEL,\
+    MODEL_NAME,\
     p_lev_mid,\
     time_idx_delta,\
     SAVE_THETAE,\
@@ -699,11 +882,11 @@ def convecTransLev2_extractprecip(*argsv):
     LAT_VAR,\
     LON_VAR=argsv[0]
     
-    print("   Start pre-processing atmospheric temperature & moisture fields...")
+    print("   Start pre-processing precipitation fields...")
     for li in np.arange(len(ta_list)):
         convecTransLev2_matchpcpta(ta_list[li], TA_VAR, pr_list, PR_VAR,\
-        prc_list, PRC_VAR, MODEL, time_idx_delta,\
-        START_DATE, END_DATE, PARENT_DATE, TIME_STEP,\
+        prc_list, PRC_VAR, MODEL_NAME, time_idx_delta,\
+        START_DATE, END_DATE, \
         PRECIP_FACTOR, SAVE_PRECIP, PREPROCESSING_OUTPUT_DIR, TIME_VAR, LAT_VAR,LON_VAR)
               
                                             
@@ -722,8 +905,6 @@ def convecTransLev2_bin(REGION, *argsv):
     NUMBER_OF_REGIONS,\
     START_DATE,\
     END_DATE,\
-    PARENT_DATE,\
-    TIME_STEP,\
     pr_list,\
     PR_VAR,\
     prc_list,\
@@ -742,7 +923,7 @@ def convecTransLev2_bin(REGION, *argsv):
     PS_VAR,\
     A_VAR,\
     B_VAR,\
-    MODEL,\
+    MODEL_NAME,\
     p_lev_mid,\
     time_idx_delta,\
     SAVE_THETAE,\
@@ -788,11 +969,24 @@ def convecTransLev2_bin(REGION, *argsv):
     gravity=9.8 ### accl. due to gravity
     thresh_pres=700 ## Filter all point below this surface pressure in hPa
 
+
     for i,(j,k) in enumerate(zip(thetae_list,pr_list)):
         
         thetae_netcdf=Dataset(j,'r')
         lat=np.asarray(thetae_netcdf.variables[LAT_VAR][:],dtype="float")
-        time=np.asarray(thetae_netcdf.variables[TIME_VAR][:],dtype="float")
+        time_arr=thetae_netcdf.variables[TIME_VAR]
+        time=time_arr[:]
+                
+        if MODEL_NAME in ['CESM']:
+            ### CESM requires special handling because of trailing zeros in date ##
+            strt_date=dt.datetime.strptime(time_arr.units.split('since')[-1].lstrip(" "),'%Y-%m-%d %H:%M:%S')
+            time_res=time_arr.units.split('since')[0].strip(" ")
+            thetae_dates=[strt_date+dt.timedelta(**{time_res: i}) for i in time]        
+        else:
+            thetae_dates=num2pydate(time,units=time_arr.units)
+        
+        
+        
         thetae_bl=np.asarray(thetae_netcdf.variables[BL_THETAE_VAR][:],dtype="float")
         thetae_lt=np.asarray(thetae_netcdf.variables[LFT_THETAE_VAR][:],dtype="float")
         thetae_sat_lt=np.asarray(thetae_netcdf.variables[LFT_THETAE_SAT_VAR][:],dtype="float")
@@ -803,13 +997,27 @@ def convecTransLev2_bin(REGION, *argsv):
         pr_netcdf=Dataset(k,'r')
         lat_pr=np.asarray(pr_netcdf.variables[LAT_VAR][:],dtype="float")
         lat_idx=[n for n,m in enumerate(lat_pr) if m in lat] ## Only extract a slice of the prc data
-        time_pr=np.asarray(pr_netcdf.variables[TIME_VAR][:],dtype="float")
-        pr=np.squeeze(np.asarray(pr_netcdf.variables[PR_VAR][:,lat_idx,:],dtype="float"))
+        time_arr=pr_netcdf.variables[TIME_VAR]
+        time_pr=time_arr[:]
+        
+        if MODEL_NAME in ['CESM']:
+            ### CESM requires special handling because of trailing zeros in date ##
+            strt_date=dt.datetime.strptime(time_arr.units.split('since')[-1].lstrip(" "),'%Y-%m-%d %H:%M:%S')
+            time_res=time_arr.units.split('since')[0].strip(" ")
+            pr_dates=np.asarray([strt_date+dt.timedelta(**{time_res: i}) for i in time_pr]) 
+        else:        
+            pr_dates=num2pydate(time_pr,units=time_arr.units) 
+        ### Extract indices in the precip. file that are closes to the thetae_dates ###
+        ### This step saves time if the precip. time interval is much larger than time interval of interest ###
+        istrt=(np.where(pr_dates==nearest(pr_dates,thetae_dates[0],greater=False))[0][0])
+        iend=(np.where(pr_dates==nearest(pr_dates,thetae_dates[-1],greater=False))[0][0])
+
+
+        pr=np.squeeze(np.asarray(pr_netcdf.variables[PR_VAR][istrt:iend+1,lat_idx,:],dtype="float"))
+        pr_dates=pr_dates[istrt:iend+1]
+
         pr_netcdf.close()
         
-        print(np.nanmax(thetae_bl),np.nanmax(pr),i,j,k)
-
-        continue
                                                              
         print("      "+k+" Loaded!")
         ### Ensure that thetae variables and precip. variables are matched ###
@@ -819,17 +1027,20 @@ def convecTransLev2_bin(REGION, *argsv):
         
             print('Matching precip. and theta_e')
 
-            time_ind=([n for n,m in enumerate(time_pr) if abs((m-time)).min()<=0.0625])
+#             time_ind=([n for n,m in enumerate(time_pr) if abs((m-time)).min()<=0.0625])
+            
+            time_ind=([j for j,k in enumerate(pr_dates) for l in thetae_dates 
+            if np.logical_and((k-l).total_seconds()/3600.<=1.5,(k-l).total_seconds()/3600.>0.0)])
+
+
             ## Choosing time so that the 3hrly avg. precip. is centered 1.5 hrs after the
             ## T,q measurement.
         
-            time_ind=time_ind[1::2]
-            time_ind_new=np.zeros((max(len(time_ind),time.size)))
-            
-            diff=time.size-len(time_ind)
+            time_ind_new=np.zeros((max(len(thetae_dates),len(time_ind))))        
+            diff=len(thetae_dates)-len(time_ind)
         
             try:
-                assert len(time_ind)==len(time)
+                assert len(time_ind)==len(thetae_dates)
                 time_ind_new[:]=time_ind
             except:
                 time_ind_new[:-diff]=time_ind
@@ -837,6 +1048,7 @@ def convecTransLev2_bin(REGION, *argsv):
                
             time_ind_new_fin=(np.int_(time_ind_new[np.isfinite(time_ind_new)]))
             time_ind_new_nan=np.isnan(np.int_(time_ind_new))
+                    
     
             ### Assuming that time is index 0
             pr_var_temp=np.zeros((time_ind_new.size,pr.shape[1],pr.shape[2]))
@@ -850,9 +1062,7 @@ def convecTransLev2_bin(REGION, *argsv):
                 pr_var_temp[-(diff+1):-1,...]=np.nan
                 
             pr=pr_var_temp*PRECIP_FACTOR
-            
-        exit()
-            
+                        
 
         ps=ps*1e-2 ## Convert surface pressure to hPa
         
@@ -888,20 +1098,19 @@ def convecTransLev2_bin(REGION, *argsv):
         RAIN=pr        
         RAIN[RAIN<0]=0 # Sometimes models produce negative rain rates
 
-        
         # Binning is structured in the following way to avoid potential round-off issue
         #  (an issue arise when the total number of events reaches about 1e+8)
+        p0=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
+        p1=np.zeros_like(p0)
+        p2=np.zeros_like(p0)
+        pe=np.zeros_like(p0)
+#                         
+        q0=np.zeros((NUMBER_BINT_BIN))
+        q1=np.zeros((NUMBER_BINT_BIN))
+        q2=np.zeros((NUMBER_BINT_BIN))
+        qe=np.zeros((NUMBER_BINT_BIN))
         for lon_idx in np.arange(SUBSAT.shape[2]):
-            p0=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
-            p1=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
-            p2=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
-            pe=np.zeros((NUMBER_SUBSAT_BIN,NUMBER_CAPE_BIN))
-            
-            q0=np.zeros((NUMBER_BINT_BIN))
-            q1=np.zeros((NUMBER_BINT_BIN))
-            q2=np.zeros((NUMBER_BINT_BIN))
-            qe=np.zeros((NUMBER_BINT_BIN))
-            
+                    
             convecTransLev2_binThetae(lon_idx, REGION, PRECIP_THRESHOLD,
             NUMBER_CAPE_BIN, NUMBER_SUBSAT_BIN, NUMBER_BINT_BIN, 
             CAPE, SUBSAT, BINT, RAIN, p0, p1, p2, pe, q0, q1, q2, qe)
@@ -915,20 +1124,32 @@ def convecTransLev2_bin(REGION, *argsv):
             Q1+=q1
             Q2+=q2
             QE+=qe
+            
+            
+            ### Re-set the array values to zero ###
+            p0[:]=0
+            q0[:]=0
+
+            p1[:]=0
+            q1[:]=0
+
+            p2[:]=0
+            q2[:]=0
+
+            pe[:]=0
+            qe[:]=0
 
         temp_prc=P1/P0
         print(np.nanmax(temp_prc),P0.max())
-        print("...Complete for current files!")
-        
+#         print("...Complete for current files!")
         
     
-
     print("   Total binning complete!")
     
     # Save Binning Results
     bin_output_netcdf=Dataset(BIN_OUTPUT_DIR+BIN_OUTPUT_FILENAME+".nc","w",format="NETCDF4")
             
-    bin_output_netcdf.description="Convective Onset Buoyancy Statistics for "+MODEL
+    bin_output_netcdf.description="Convective Onset Buoyancy Statistics for "+MODEL_NAME
     bin_output_netcdf.source="Convective Onset Buoyancy Statistics Diagnostic Package \
     - as part of the NOAA Model Diagnostic Task Force (MDTF) effort"
 
