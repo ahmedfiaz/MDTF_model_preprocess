@@ -25,6 +25,15 @@ from vert_cython import vert_integ_variable_bl,vert_integ_exneri_variable_bl,ver
 from vert_cython import find_closest_index
 import os
 import time as tt
+import warnings
+
+
+# def fxn():
+#     warnings.warn("deprecated", DeprecationWarning)
+# 
+# with warnings.catch_warnings():
+#     warnings.simplefilter("ignore")
+#     fxn()
 
 t0=tt.time()
 
@@ -90,13 +99,13 @@ if (len(bin_data["bin_output_list"])==0 or bin_data["BIN_ANYWAY"]):
     ### Only for CMIP6 models with different output formats between precip
     ### and thetae-based variables ###
             
-    if (bin_data["SAVE_PRECIP"]==1) :
-        print("     Precip-thetae matching and saving required")
-        convecTransLev2_extractprecip(bin_data["args3"])
+#     if (bin_data["SAVE_PRECIP"]==1) :
+#         print("     Precip-thetae matching and saving required")
+#         convecTransLev2_extractprecip(bin_data["args3"])
 
-    else:
-        print("    Pre-processed data available...")
-        print("     Now binning...")
+#     else:
+#         print("    Pre-processed data available...")
+#         print("     Now binning...")
 
 
     # Load & pre-process region mask

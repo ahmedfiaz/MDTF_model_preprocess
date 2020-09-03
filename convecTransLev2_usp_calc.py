@@ -29,19 +29,34 @@ import glob
 # MODEL_NAME='GFDL-CM4'
 # MODEL_NAME='F-GOALS' 
 # MODEL_NAME='CNRM-CM6-1-HR' ## issue with a(p) and b(p): these parameters seem correct for first file, but wrong afterward
-# MODEL_NAME='CNRM-CM6-1'
+MODEL_NAME='CNRM-CM6-1'
 # MODEL_NAME='ACCESS-ESM1' ### issue with a(p) and b(p), data is possibly in height co-ordinates
-MODEL_NAME='CESM' ## issue with the date which begins from 0001-01-01
+# MODEL_NAME='CESM' ## issue with the date which begins from 0001-01-01
 # MODEL_NAME='NASA-GISS'
 # MODEL_NAME='SNU.SAM0-UNICON'
 # MODEL_NAME='MPI-ESM1'
 # MODEL_NAME='BCC_3hr'
 
 START_DATE='2013010106' ## TIME FORMAT: YYYYMMDDHH
-END_DATE='2013013118' 
+END_DATE='2014123118' 
+
+# START_DATE='2096010103' ## TIME FORMAT: YYYYMMDDHH
+# END_DATE='2097123121' 
+
+## The latitudinal bounds are controlled by the region mask (which is bounded by 20 N- 20 S)
+# LAT_BNDS=[-20,20]  ## Set latitudinal bounds for analysis
+
+
 # MODEL=os.environ["CASENAME"]#os.environ["model"] # will show up in the figure
 # Model output directory
+
+# MODEL_OUTPUT_DIR='/scratch/neelin/CMIP6/SSP585/'+MODEL_NAME+'/' # where original model data are located
+# FORCING='SSP585'
+
 MODEL_OUTPUT_DIR='/scratch/neelin/CMIP6/'+MODEL_NAME+'/' # where original model data are located
+FORCING='HIST'
+
+
 # MODEL_OUTPUT_DIR=os.environ["MODEL_OUTPUT_DIR"] # where original model data are located
 # Variable Names
 PR_VAR="pr"
@@ -53,11 +68,12 @@ PS_VAR="ps"
 A_VAR="a"
 B_VAR="b"
 
+
 ## for F-GOALS ##
 # A_VAR='ptop'
 
-## for MPI-ESM, CNRM-CM6, IPSL, MPI-ESM1
-# A_VAR="ap"
+## for MPI-ESM, CNRM-CM6, IPSL, MPI-ESM1, GFDL-CM4
+A_VAR="ap"
 
 ## for IPSL
 # LEV_VAR="presnivs" 
@@ -96,6 +112,7 @@ time_idx_delta=1000
 #  PREPROCESSING_OUTPUT_DIR
 
 PREPROCESSING_OUTPUT_DIR="/scratch/neelin/layer_thetae/CMIP6/"+MODEL_NAME+"/" 
+# PREPROCESSING_OUTPUT_DIR="/scratch/neelin/layer_thetae/CMIP6-SSP585/"+MODEL_NAME+"/" 
 
 THETAE_OUT="layer_thetae_var"
 
@@ -118,7 +135,7 @@ BL_THETAE_VAR="thetae_bl"
 # Directory & Filename for saving binned results (netCDF4)
 #  tave or qsat_int will be appended to BIN_OUTPUT_FILENAME
 BIN_OUTPUT_DIR="/home/fiaz/MDTF/"
-BIN_OUTPUT_FILENAME=MODEL_NAME+".convecTransLev2"
+BIN_OUTPUT_FILENAME=MODEL_NAME+"_"+FORCING+".convecTransLev2"
 
 # BIN_OUTPUT_DIR=os.environ["WK_DIR"]+"/model/netCDF"
 # BIN_OUTPUT_FILENAME=os.environ["CASENAME"]+".convecTransBasic"
@@ -141,15 +158,16 @@ BINT_RANGE_MIN=-1.5 # default=90 (75 for satellite retrieval product)
 CAPE_RANGE_MIN=-40.0
 CAPE_RANGE_MAX=20.0
 
-CAPE_RANGE_MIN=-100.0
-CAPE_RANGE_MAX=-20.0
 CAPE_BIN_WIDTH=1.0
 
-# SUBSAT_RANGE_MIN=-1.0
-# SUBSAT_RANGE_MAX=42.0
+SUBSAT_RANGE_MIN=-1.0
+SUBSAT_RANGE_MAX=42.0
 
-SUBSAT_RANGE_MIN=25.0
-SUBSAT_RANGE_MAX=100.0
+# CAPE_RANGE_MIN=-100.0
+# CAPE_RANGE_MAX=-20.0
+
+# SUBSAT_RANGE_MIN=25.0
+# SUBSAT_RANGE_MAX=100.0
 
 SUBSAT_BIN_WIDTH=1.0
 
@@ -314,21 +332,6 @@ else:
     data["PREPROCESS_THETAE"]=0
     data["SAVE_THETAE"]=0
 
-    
-### Only for models where the precip. output has a 
-### different frequency than the theta_e output.
-
-if (len(data['pr_list'])!=len(data['ta_list'])):
-    data["MATCH_PRECIP_THETAE"]=1
-    if len(data['pr_save_list'])<len(data['ta_list']):
-        data["SAVE_PRECIP"]=1
-    else:
-        data["SAVE_PRECIP"]=0
-else:
-    data["MATCH_PRECIP_THETAE"]=0
-    data["SAVE_PRECIP"]=0
-
-
 
 # Taking care of function arguments for binning
 data["args1"]=[ \
@@ -364,10 +367,8 @@ A_VAR,\
 B_VAR,\
 MODEL_NAME, \
 p_lev_mid, \
-# dp, \
 time_idx_delta, \
 data["SAVE_THETAE"], \
-data["MATCH_PRECIP_THETAE"], \
 PREPROCESSING_OUTPUT_DIR, \
 PRECIP_THRESHOLD, \
 PRECIP_FACTOR,\
@@ -418,7 +419,6 @@ p_lev_mid, \
 # dp, \
 time_idx_delta, \
 data["SAVE_THETAE"], \
-data["SAVE_PRECIP"], \
 PREPROCESSING_OUTPUT_DIR, \
 PRECIP_THRESHOLD, \
 PRECIP_FACTOR,\
