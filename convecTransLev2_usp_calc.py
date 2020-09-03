@@ -29,7 +29,7 @@ import glob
 # MODEL_NAME='GFDL-CM4'
 # MODEL_NAME='F-GOALS' 
 # MODEL_NAME='CNRM-CM6-1-HR' ## issue with a(p) and b(p): these parameters seem correct for first file, but wrong afterward
-MODEL_NAME='CNRM-CM6-1'
+# MODEL_NAME='CNRM-CM6-1'
 # MODEL_NAME='ACCESS-ESM1' ### issue with a(p) and b(p), data is possibly in height co-ordinates
 # MODEL_NAME='CESM' ## issue with the date which begins from 0001-01-01
 # MODEL_NAME='NASA-GISS'
@@ -37,8 +37,8 @@ MODEL_NAME='CNRM-CM6-1'
 # MODEL_NAME='MPI-ESM1'
 # MODEL_NAME='BCC_3hr'
 
-START_DATE='2013010106' ## TIME FORMAT: YYYYMMDDHH
-END_DATE='2014123118' 
+START_DATE='2010010100' ## TIME FORMAT: YYYYMMDDHH
+END_DATE='2014123121' 
 
 # START_DATE='2096010103' ## TIME FORMAT: YYYYMMDDHH
 # END_DATE='2097123121' 
