@@ -29,16 +29,21 @@ import glob
 # MODEL_NAME='GFDL-CM4'
 # MODEL_NAME='F-GOALS' 
 # MODEL_NAME='CNRM-CM6-1-HR' ## issue with a(p) and b(p): these parameters seem correct for first file, but wrong afterward
-MODEL_NAME='CNRM-CM6-1'
+# MODEL_NAME='CNRM-CM6-1'
 # MODEL_NAME='ACCESS-ESM1' ### issue with a(p) and b(p), data is possibly in height co-ordinates
 # MODEL_NAME='CESM' ## issue with the date which begins from 0001-01-01
 # MODEL_NAME='NASA-GISS'
 # MODEL_NAME='SNU.SAM0-UNICON'
 # MODEL_NAME='MPI-ESM1'
 # MODEL_NAME='BCC_3hr'
+MODEL_NAME='UNICON'
 
-START_DATE='2013010106' ## TIME FORMAT: YYYYMMDDHH
-END_DATE='2014123118' 
+# START_DATE='2013010106' ## TIME FORMAT: YYYYMMDDHH
+# END_DATE='2014123118' 
+
+START_DATE='1985010100' ## TIME FORMAT: YYYYMMDDHH
+END_DATE='2004123100' 
+DATE_FORMAT='%Y%m%d' ### If time is specified as a float or integer
 
 # START_DATE='2096010103' ## TIME FORMAT: YYYYMMDDHH
 # END_DATE='2097123121' 
@@ -53,35 +58,50 @@ END_DATE='2014123118'
 # MODEL_OUTPUT_DIR='/scratch/neelin/CMIP6/SSP585/'+MODEL_NAME+'/' # where original model data are located
 # FORCING='SSP585'
 
-MODEL_OUTPUT_DIR='/scratch/neelin/CMIP6/'+MODEL_NAME+'/' # where original model data are located
-FORCING='HIST'
+# MODEL_OUTPUT_DIR='/scratch/neelin/CMIP6/'+MODEL_NAME+'/' # where original model data are located
+# FORCING='HIST'
+
+MODEL_OUTPUT_DIR='/neelin2020/UNICON/unicon_stand_2deg_A159d_exp11/' # where original model data are located
+FORCING='Omega=0.4'
 
 
 # MODEL_OUTPUT_DIR=os.environ["MODEL_OUTPUT_DIR"] # where original model data are located
 # Variable Names
-PR_VAR="pr"
+# PR_VAR="pr"
+# PRC_VAR="prc"
+# TA_VAR="ta"
+# HUS_VAR="hus"
+# LEV_VAR="lev"
+# PS_VAR="ps"
+# A_VAR="a"
+# B_VAR="b"
+
+## For UNICON ###
+PR_VAR="PRCP"
 PRC_VAR="prc"
-TA_VAR="ta"
-HUS_VAR="hus"
+TA_VAR="T"
+HUS_VAR="Q"
 LEV_VAR="lev"
 PS_VAR="ps"
 A_VAR="a"
 B_VAR="b"
 
+VERT_TYPE='pres' # sigma or pres
 
 ## for F-GOALS ##
 # A_VAR='ptop'
 
 ## for MPI-ESM, CNRM-CM6, IPSL, MPI-ESM1, GFDL-CM4
-A_VAR="ap"
+# A_VAR="ap"
 
 ## for IPSL
 # LEV_VAR="presnivs" 
 
-
 TIME_VAR="time"
 LAT_VAR="lat"
 LON_VAR="lon"
+
+
 
 # PRES_VAR=os.environ["lev_coord"]
 # TIME_VAR=os.environ["time_coord"]
@@ -111,30 +131,23 @@ time_idx_delta=1000
 #  & data["qsat_int_list"] below by replacing MODEL_OUTPUT_DIR with
 #  PREPROCESSING_OUTPUT_DIR
 
-PREPROCESSING_OUTPUT_DIR="/scratch/neelin/layer_thetae/CMIP6/"+MODEL_NAME+"/" 
+# PREPROCESSING_OUTPUT_DIR="/scratch/neelin/layer_thetae/CMIP6/"+MODEL_NAME+"/" 
+PREPROCESSING_OUTPUT_DIR="/neelin2020/UNICON/unicon_stand_2deg_A159d_exp11/layer_thetae/"
+
 # PREPROCESSING_OUTPUT_DIR="/scratch/neelin/layer_thetae/CMIP6-SSP585/"+MODEL_NAME+"/" 
 
-THETAE_OUT="layer_thetae_var"
+THETAE_OUT="data_layer_thetae_var"
 
 LFT_THETAE_VAR="thetae_lt"
 LFT_THETAE_SAT_VAR="thetae_sat_lt"
 BL_THETAE_VAR="thetae_bl"
 
-# BL_INT_VAR=os.environ["qsat_int_var"]
-
-# PREPROCESSING_OUTPUT_DIR=os.environ["DATADIR"] 
-# TAVE_VAR=os.environ["tave_var"]
-# QSAT_INT_VAR=os.environ["qsat_int_var"]
-# Number of time-steps in Temperature-preprocessing
-#  Default: 1000 (use smaller numbers for limited memory)
-# time_idx_delta=1000
-# Use 1:tave, or 2:qsat_int as Bulk Tropospheric Temperature Measure 
-# BULK_TROPOSPHERIC_TEMPERATURE_MEASURE=int(os.environ["BULK_TROPOSPHERIC_TEMPERATURE_MEASURE"])
 
 # ======================================================================
 # Directory & Filename for saving binned results (netCDF4)
 #  tave or qsat_int will be appended to BIN_OUTPUT_FILENAME
-BIN_OUTPUT_DIR="/home/fiaz/MDTF/"
+BIN_OUTPUT_DIR="/home/fiaz/MDTF/files/HIST/"
+# BIN_OUTPUT_FILENAME=MODEL_NAME+"_"+FORCING+".prc.convecTransLev2"
 BIN_OUTPUT_FILENAME=MODEL_NAME+"_"+FORCING+".convecTransLev2"
 
 # BIN_OUTPUT_DIR=os.environ["WK_DIR"]+"/model/netCDF"
@@ -143,6 +156,9 @@ BIN_OUTPUT_FILENAME=MODEL_NAME+"_"+FORCING+".convecTransLev2"
 # ======================================================================
 # Re-do binning even if binned data file detected (default: True)
 BIN_ANYWAY=True
+
+# Override the pre-processing step ()
+SKIP_PREPROCESS=True
 
 # ======================================================================
 # Column Water Vapor (CWV in mm) range & bin-width
@@ -190,9 +206,10 @@ p_lev_mid=500
 # dp=1.0
 
 # Threshold value defining precipitating events [mm/hr]
-PRECIP_THRESHOLD=0.25
+PRECIP_THRESHOLD=1.0#0.25
 # PRECIP_FACTOR=1e3 ## Factor to convert precip. units to mm/hr
-PRECIP_FACTOR=36e2 ## Factor to convert precip. units to mm/hr
+# PRECIP_FACTOR=36e2 ## Factor to convert precip. units to mm/hr
+PRECIP_FACTOR=1./24 ## Factor to convert precip. units to mm/hr
 
 # ======================================================================
 # END USER SPECIFIED SECTION
@@ -220,6 +237,7 @@ data["TIME_VAR"]=TIME_VAR
 data["LAT_VAR"]=LAT_VAR
 data["LON_VAR"]=LON_VAR
 data["LEV_VAR"]=LEV_VAR
+data["DATE_FORMAT"]=DATE_FORMAT
 
 data["LFT_THETAE_VAR"]=LFT_THETAE_VAR
 data["LFT_THETAE_SAT_VAR"]=LFT_THETAE_SAT_VAR
@@ -229,10 +247,14 @@ data["BL_THETAE"]=BL_THETAE_VAR
 # data["PRC_VAR"]=PRC_VAR
 # data["TA_VAR"]=TA_VAR
 # data["HUS_VAR"]=HUS_VAR
+# data["PRES_VAR"]=PRES_VAR
 
 data["PS_VAR"]=PS_VAR
 data["A_VAR"]=A_VAR
 data["B_VAR"]=B_VAR
+
+data["VERT_TYPE"]=VERT_TYPE
+
 
 # data["TAVE_VAR"]=TAVE_VAR
 # data["QSAT_INT_VAR"]=QSAT_INT_VAR
@@ -264,18 +286,6 @@ data["SUBSAT_BIN_WIDTH"]=SUBSAT_BIN_WIDTH
 data["SUBSAT_RANGE_MAX"]=BINT_RANGE_MAX
 data["SUBSAT_RANGE_MIN"]=BINT_RANGE_MIN
 
-# 
-# data["T_RANGE_MIN"]=T_RANGE_MIN
-# data["T_RANGE_MAX"]=T_RANGE_MAX
-# data["T_BIN_WIDTH"]=T_BIN_WIDTH
-# 
-# data["Q_RANGE_MIN"]=Q_RANGE_MIN
-# data["Q_RANGE_MAX"]=Q_RANGE_MAX
-# data["Q_BIN_WIDTH"]=Q_BIN_WIDTH
-# 
-# data["p_lev_bottom"]=p_lev_bottom
-# data["p_lev_top"]=p_lev_top
-# data["dp"]=dp
 
 data["PRECIP_THRESHOLD"]=PRECIP_THRESHOLD
 data["PRECIP_FACTOR"]=PRECIP_FACTOR
@@ -294,20 +304,14 @@ prc_list=sorted(glob.glob(MODEL_OUTPUT_DIR+PRC_VAR+"/*"))
 ta_list=sorted(glob.glob(MODEL_OUTPUT_DIR+TA_VAR+"/*"))
 hus_list=sorted(glob.glob(MODEL_OUTPUT_DIR+HUS_VAR+"/*"))
 
-
 data["pr_list"] = pr_list
 data["prc_list"] = prc_list
 data["ta_list"] = ta_list
 data["hus_list"] = hus_list
-data["THETAE_OUT"] =THETAE_OUT
-data["LFT_THETAE_VAR"]=LFT_THETAE_VAR
-data["LFT_THETAE_SAT_VAR"]=LFT_THETAE_SAT_VAR
-data["BL_THETAE"]=BL_THETAE_VAR
-# prw_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+os.environ["prw_file"]))
-# ta_list=sorted(glob.glob(MODEL_OUTPUT_DIR+"/"+os.environ["ta_file"]))
-# data["pr_list"] = pr_list
-# data["prw_list"] = prw_list
-# data["ta_list"] = ta_list
+data["THETAE_OUT"] = THETAE_OUT
+data["LFT_THETAE_VAR"]= LFT_THETAE_VAR
+data["LFT_THETAE_SAT_VAR"]= LFT_THETAE_SAT_VAR
+data["BL_THETAE"]= BL_THETAE_VAR
 
 # Check for pre-processed tave & qsat_int data
 # print(PREPROCESSING_OUTPUT_DIR+THETAE_OUT)
@@ -321,7 +325,6 @@ prc_save_list=sorted(glob.glob(PREPROCESSING_OUTPUT_DIR+PRC_VAR+"*"))
 data["thetae_list"]=thetae_list
 data["pr_save_list"]=pr_save_list
 
-
 if len(data["ta_list"])==0:
         exit('     No input files found...')
 
@@ -332,7 +335,12 @@ else:
     data["PREPROCESS_THETAE"]=0
     data["SAVE_THETAE"]=0
 
+if SKIP_PREPROCESS:
+    data["PREPROCESS_THETAE"]=0
+    data["SAVE_THETAE"]=0
 
+
+    
 # Taking care of function arguments for binning
 data["args1"]=[ \
 BINT_BIN_WIDTH, \
@@ -347,6 +355,7 @@ SUBSAT_BIN_WIDTH, \
 NUMBER_OF_REGIONS, \
 START_DATE,\
 END_DATE,\
+DATE_FORMAT,\
 pr_list, \
 PR_VAR, \
 prc_list, \
@@ -365,6 +374,7 @@ LEV_VAR, \
 PS_VAR, \
 A_VAR,\
 B_VAR,\
+VERT_TYPE,\
 MODEL_NAME, \
 p_lev_mid, \
 time_idx_delta, \
@@ -427,6 +437,8 @@ data["BIN_OUTPUT_FILENAME"], \
 TIME_VAR, \
 LAT_VAR, \
 LON_VAR ]
+
+print(len(data['args1']))
 
 with open(os.getcwd()+'/'+'convecTransLev2_calc_parameters.json', "w") as outfile:
     json.dump(data, outfile)

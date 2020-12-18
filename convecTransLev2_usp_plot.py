@@ -28,13 +28,15 @@ FIG_OUTPUT_FILENAME=bin_data["BIN_OUTPUT_FILENAME"]
 FIG_EXTENSION='pdf'
 
 ## Binned data filename & figure directory/filename for OBS (default: R2TMIv7) ##
-OBS="ERA-I + TRMM3B42" # will show up in the MODEL figure
+# OBS="ERA-I + TRMM3B42" # will show up in the MODEL figure
+OBS="ERA-5/TRMM3B42" # will show up in the MODEL figure
+
 # REGION_STR_OBS=["WPac","EPac","Atl","Ind"]
 bin_obs_list=sorted(glob.glob(os.environ["OBS_DATA"]\
-                    +"trmm3B42_erai_2002_2014.convecTransLev2"
+                    +"trmm3B42_era5_2002_2014.convecTransLev2"
                     +".nc"))
 FIG_OBS_DIR=os.environ["WK_DIR"]+"/obs/PS"
-FIG_OBS_FILENAME="convecTransLev2_trmm3B42_erai_2002_2014"+".pdf"
+FIG_OBS_FILENAME="convecTransLev2_trmm3B42_era5_2002_2014"+".pdf"
 
 # Force the OBS & MODEL figures to use the same color map
 #  Will be ignored if binned OBS data does not exist
@@ -173,7 +175,7 @@ data["FIG_OUTPUT_FILENAME"]=FIG_OUTPUT_FILENAME
 data["FIG_OBS_FILENAME"]=FIG_OBS_FILENAME
 data["FIG_EXTENSION"]=FIG_EXTENSION
 
-data["args3"]=[ bin_obs_list]
+data["args3"]=[ bin_obs_list]    
 print(data['args3'])
 
 # ,\

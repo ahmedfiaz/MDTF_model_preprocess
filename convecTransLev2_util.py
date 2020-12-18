@@ -325,12 +325,23 @@ def generate_region_mask(region_mask_filename, model_netcdf_filename, lat_var, l
 
 
 ### function to fix datetime formats in fiesl
-def fix_datetime(ds):
-    try:
+# def fix_datetime(ds):
+#     try:
+#         datetimeindex = ds.indexes['time'].to_datetimeindex()
+#         ds['time'] = datetimeindex
+#     except:
+#         pass
+#         
+def fix_datetime(ds,date_format=None):
+#     try:
+#       
+    if ds.indexes['time'].dtype=='float64' or ds.indexes['time'].dtype=='int64':
+        ds['time']=[dt.datetime.strptime(str(int(i.values)),date_format) for i in ds.time]
+    else:
         datetimeindex = ds.indexes['time'].to_datetimeindex()
         ds['time'] = datetimeindex
-    except:
-        pass
+#     except:
+#         pass
 
 # =====================
 # =================================================
@@ -341,8 +352,8 @@ def fix_datetime(ds):
 #  to time_idx_delta with a default of 1000 time steps
 
 def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filename, HUS_VAR,\
-                        LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL_NAME, p_lev_mid, time_idx_delta,\
-                        START_DATE, END_DATE,\
+                        LEV_VAR, PS_VAR, A_VAR, B_VAR, VERT_TYPE, MODEL_NAME, p_lev_mid, time_idx_delta,\
+                        START_DATE, END_DATE, DATE_FORMAT,\
                         SAVE_THETAE,PREPROCESSING_OUTPUT_DIR, THETAE_OUT,\
                         THETAE_LT_VAR,THETAE_SAT_LT_VAR,THETAE_BL_VAR,\
                         TIME_VAR,LAT_VAR,LON_VAR):
@@ -364,7 +375,6 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
     ta_ds=ta_ds.rename({TIME_VAR:TIME_VAR_NEW,LAT_VAR:LAT_VAR_NEW,LON_VAR:LON_VAR_NEW,LEV_VAR:LEV_VAR_NEW})
     hus_ds=hus_ds.rename({TIME_VAR:TIME_VAR_NEW,LAT_VAR:LAT_VAR_NEW,LON_VAR:LON_VAR_NEW,LEV_VAR:LEV_VAR_NEW})
 
-
     ### set time and latitudinal slices for extraction ###
     time_slice=slice(dt.datetime.strptime(START_DATE,'%Y%m%d%H'),
     dt.datetime.strptime(END_DATE,'%Y%m%d%H'))
@@ -376,13 +386,14 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
         exit('     Please set time range greater than 1 day. Exiting now')
 
     ### Ensure that times are in datetime format. ###
-    fix_datetime(ta_ds)
-    fix_datetime(hus_ds)
+    fix_datetime(ta_ds, DATE_FORMAT)
+    fix_datetime(hus_ds, DATE_FORMAT)
+    
 
     ### select subset ###
     ta_ds_subset=ta_ds.sel(time=time_slice,lat=lat_slice)
     hus_ds_subset=hus_ds.sel(time=time_slice,lat=lat_slice)
-    
+
     
     ### if the dataset falls within specified time range: ###
     if(ta_ds_subset.time.size)>0:
@@ -391,48 +402,84 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
  
         print('LOADING ARRAYS')
         ### Load arrays into memory ###
-    
-    #     time_arr=ta_ds_subset.[TIME_VAR]
-        lev=ta_ds_subset['lev']
-        a=ta_ds_subset[A_VAR]
-        b=ta_ds_subset[B_VAR] ## comment this if using F-GOALS
+        
         lat=ta_ds_subset['lat']
-        lon=ta_ds_subset[LON_VAR]
-        ps=ta_ds_subset[PS_VAR]
+        lon=ta_ds_subset['lon']
         ta=ta_ds_subset[TA_VAR]
         hus=hus_ds_subset[HUS_VAR]
-    
+
+    #     time_arr=ta_ds_subset.[TIME_VAR]
+        lev=ta_ds_subset['lev']
+        
+        ### Check if pressure or sigma co-ordinates ###
+        
+        if VERT_TYPE=='pres':
+
+            pres=ta_ds_subset['lev']
+            
+            ### Convert units ###
+            if(pres.units=='hPa'):
+                pres=pres*100
+            ### Convert data type
+            pres=pres.astype('float')
+            
+            pres,dummy=xr.broadcast(pres,ta_ds_subset.isel(lev=0,drop=True))
+
+            
+            try:
+                ps=ta_ds_subset[PS_VAR]
+                if(ps.units=='hPa'):
+                    ps=ps*100
+            except:        
+                ps=pres.sel(lev=lev.max().values)
+
+        
+        elif VERT_TYPE=='sigma':
+            a=ta_ds_subset[A_VAR]
+            b=ta_ds_subset[B_VAR] ## comment this if using F-GOALS
+            ps=ta_ds_subset[PS_VAR]
+
         ### for IPSL SSP585, a and b have one extra dimension ###
 #         a=a[:-1]
 #         b=b[:-1]
-    
-        assert(ta_ds_subset['time'].size==hus_ds_subset['time'].size)
-    
 
-        ### Create pressure data ###
-        pres=b*ps+a     ### Comment for F-GOALS
-#         pres=a+lev*(ps-a) ### Uncomment for F-GOALS
-#         print(pres.sel(time=dt.datetime(2053,1,1,6),lat=-5,lon=120,method='nearest').values)
-#         print(ps.sel(time=dt.datetime(2053,1,1,6),lat=-5,lon=120,method='nearest').values)
-#         print(a.values)
-#         print(b.values)
-# #         print(a.sel(time=dt.datetime(2053,1,1,6),lat=-5,lon=120,method='nearest').values)
-# #         print(b.sel(time=dt.datetime(2053,1,1,6),lat=-5,lon=120,method='nearest').values)
+        ### for CNRM-CM6-1-HR tackle with changed co-ordinate names###
+#                         
+#         a=a.rename({'ap':LEV_VAR_NEW})
+#         a=a.assign_coords({LEV_VAR_NEW:lev})
 #         
-#         exit()
+#         b=b.rename({'b':LEV_VAR_NEW})
+#         b=b.assign_coords({LEV_VAR_NEW:lev})
+            
+            
+        ### Create pressure data ###
 
-        ### Define the layers for averaging ###    
+            pres=b*ps+a     ### Comment for F-GOALS
+    #         pres=a+lev*(ps-a) ### Uncomment for F-GOALS
+            ### Define the layers for averaging ###    
+
+ 
+        else:
+            exit('     Please select either "pres" or "sigma" for vertical co-ordinate type. Exiting now')
+
+        
+        assert(ta_ds_subset['time'].size==hus_ds_subset['time'].size)
+            
+
         pbl_top=ps-100e2 ## The BL is 100 mb thick ##
+        pbl_top=np.float_(pbl_top.values.flatten()) ### overwriting pbl top xarray with numpy array
         low_top=np.zeros_like(ps)
         low_top[:]=500e2  # the LFT top is fixed at 500 mb
 
-        pbl_top=np.float_(pbl_top.values.flatten()) ### overwriting pbl top xarray with numpy array
         low_top=np.float_(low_top.flatten())
+        
 
         ### LOAD data arrays into memory###
         print('LOADING VALUES')
         ta=ta.transpose('lev','time','lat','lon')
         hus=hus.transpose('lev','time','lat','lon')
+        pres=pres.transpose('lev','time','lat','lon')
+        ps=ps.transpose('time','lat','lon')
 
         pres=pres.values   
         ta=np.asarray(ta.values,dtype='float')
@@ -467,7 +514,7 @@ def convecTransLev2_calcthetae_ML(ta_netcdf_filename, TA_VAR, hus_netcdf_filenam
 
         find_closest_index_2D(pbl_top,lev,pbl_ind)
         find_closest_index_2D(low_top,lev,low_ind)
-    
+
         stdout.flush()
         
         thetae_bl=np.zeros_like(pbl_top)
@@ -679,6 +726,7 @@ def convecTransLev2_preprocess(*argsv):
     NUMBER_OF_REGIONS,\
     START_DATE,\
     END_DATE,\
+    DATE_FORMAT,\
     pr_list,\
     PR_VAR,\
     prc_list,\
@@ -697,6 +745,7 @@ def convecTransLev2_preprocess(*argsv):
     PS_VAR,\
     A_VAR,\
     B_VAR,\
+    VERT_TYPE,\
     MODEL_NAME,\
     p_lev_mid,\
     time_idx_delta,\
@@ -714,8 +763,8 @@ def convecTransLev2_preprocess(*argsv):
     print("   Start pre-processing atmospheric temperature & moisture fields...")
     for li in np.arange(len(ta_list)):
         convecTransLev2_calcthetae_ML(ta_list[li], TA_VAR, hus_list[li], HUS_VAR,\
-                            LEV_VAR, PS_VAR, A_VAR, B_VAR, MODEL_NAME, p_lev_mid, time_idx_delta,\
-                            START_DATE, END_DATE, \
+                            LEV_VAR, PS_VAR, A_VAR, B_VAR, VERT_TYPE, MODEL_NAME, p_lev_mid, time_idx_delta,\
+                            START_DATE, END_DATE, DATE_FORMAT, \
                             SAVE_THETAE, PREPROCESSING_OUTPUT_DIR, THETAE_OUT,\
                             LFT_THETAE_VAR,LFT_THETAE_SAT_VAR,BL_THETAE_VAR,\
                             TIME_VAR,LAT_VAR,LON_VAR)
@@ -792,6 +841,7 @@ def convecTransLev2_bin(REGION, *argsv):
     NUMBER_OF_REGIONS,\
     START_DATE,\
     END_DATE,\
+    DATE_FORMAT,\
     pr_list,\
     PR_VAR,\
     prc_list,\
@@ -810,6 +860,7 @@ def convecTransLev2_bin(REGION, *argsv):
     PS_VAR,\
     A_VAR,\
     B_VAR,\
+    VERT_TYPE,\
     MODEL_NAME,\
     p_lev_mid,\
     time_idx_delta,\
@@ -873,16 +924,20 @@ def convecTransLev2_bin(REGION, *argsv):
 
     ## Open all available precip. data ###
     pr_ds=xr.open_mfdataset(pr_list)
+    
     ### rename dimensions to correct non-standard names
     LAT_VAR_NEW='lat'
     LON_VAR_NEW='lon'
     TIME_VAR_NEW='time'
     lat_slice=slice(-20,20) ## Set latitudinal slice
     pr_ds=pr_ds.rename({TIME_VAR:TIME_VAR_NEW,LAT_VAR:LAT_VAR_NEW,LON_VAR:LON_VAR_NEW})
-    fix_datetime(pr_ds)
+    fix_datetime(pr_ds,DATE_FORMAT)
+
+    
 
     for i,j in enumerate(thetae_list):
         
+        print(j)
         theta_ds=xr.open_mfdataset(j)
         
         pr_ds_sub=pr_ds.sel(time=theta_ds['time'],method='nearest',tolerance="1.5H")
@@ -903,7 +958,9 @@ def convecTransLev2_bin(REGION, *argsv):
         delta_pl=ps-100-500
         delta_pb=100
         wb=(delta_pb/delta_pl)*np.log((delta_pl+delta_pb)/delta_pb)
+#         wb[:]=0.0 ## turning off the CAPE dependence in BL
         wl=1-wb
+        
     
         wb[ps<thresh_pres]=np.nan
         wl[ps<thresh_pres]=np.nan
@@ -915,7 +972,6 @@ def convecTransLev2_bin(REGION, *argsv):
         cape[ps<thresh_pres]=np.nan
         subsat[ps<thresh_pres]=np.nan
         bint[ps<thresh_pres]=np.nan
-
         
         print("      Binning...")
         
@@ -1139,24 +1195,6 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     OVERLAY_OBS_ON_TOP_OF_MODEL_FIG,\
     MODEL_NAME=argsv3[0]
 
-#     CWV_BIN_WIDTH,\
-#     PDF_THRESHOLD,\
-#     CWV_RANGE_THRESHOLD,\
-#     CP_THRESHOLD,\
-#     MODEL,\
-#     REGION_STR,\
-#     NUMBER_OF_REGIONS,\
-#     BULK_TROPOSPHERIC_TEMPERATURE_MEASURE,\
-#     PRECIP_THRESHOLD,\
-#     FIG_OUTPUT_DIR,\
-#     FIG_OUTPUT_FILENAME,\
-#     OBS,\
-#     RES,\
-#     REGION_STR_OBS,\
-#     FIG_OBS_DIR,\
-#     FIG_OBS_FILENAME,\
-#     USE_SAME_COLOR_MAP,\
-#     OVERLAY_OBS_ON_TOP_OF_MODEL_FIG=argsv3[0]
 
     # Load binned OBS data (default: trmm3B42 + ERA-I)
     subsat_bin_center_obs,\
@@ -1331,7 +1369,6 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
 
     ax = fig.add_subplot(221)
 
-    
     Q0[Q0==0.0]=np.nan
     Q_model=Q1/Q0
     Q_model[Q0<NUMBER_THRESHOLD]=np.nan
@@ -1340,7 +1377,7 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     Q_obs=Q1_obs/Q0_obs
     Q_obs[Q0_obs<NUMBER_THRESHOLD]=np.nan
 
-    ax.scatter(bint_bin_center,Q_obs,marker='D',c='grey',label='TRMM 3B42 + ERA-I',alpha=0.5)
+    ax.scatter(bint_bin_center,Q_obs,marker='D',c='grey',label=OBS,alpha=0.5)
     ax.scatter(bint_bin_center,Q_model,marker='*',s=20,c='red',label=MODEL_NAME,alpha=0.5)
     ax.set_xlabel('$B_L$',fontsize=axes_fontsize)
     ax.set_title('P vs. $B_L$',fontsize=axes_fontsize)
@@ -1365,7 +1402,7 @@ def convecTransLev2_plot(ret,argsv1,argsv2,*argsv3):
     pdf_obs=Q0_obs/(np.nansum(Q0_obs)*dx)
     pdf_model=Q0/(np.nansum(Q0)*dx)
 
-    ax2.scatter(bint_bin_center,np.log10(pdf_obs),marker='D',c='grey',label='TRMM 3B42 + ERA-I',alpha=0.5)
+    ax2.scatter(bint_bin_center,np.log10(pdf_obs),marker='D',c='grey',label=OBS,alpha=0.5)
     ax2.scatter(bint_bin_center,np.log10(pdf_model),marker='*',s=20,c='red',label=MODEL_NAME,alpha=0.5)
     num_handles=len(handles)
     
